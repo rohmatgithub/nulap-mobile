@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import {
   PlayfairDisplay_700Bold,
@@ -22,17 +22,9 @@ import * as SplashScreen from 'expo-splash-screen';
 
 import { RootNavigator } from '@/navigation';
 import { colors } from '@/constants/theme';
+import { queryClient } from '@/services/queryClient';
 
 SplashScreen.preventAutoHideAsync();
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60,
-      retry: 2,
-    },
-  },
-});
 
 export default function App() {
   const [fontsLoaded] = useFonts({

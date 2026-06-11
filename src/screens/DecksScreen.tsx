@@ -12,13 +12,14 @@ import { Plus } from 'lucide-react-native';
 import { colors, spacing, screenPadding } from '@/constants/theme';
 import { Text, HeadingText, MetaText, Card, Badge, ProgressBar, Button } from '@/components/ui';
 import { useDecks } from '@/hooks';
+import { formatRelativeDate } from '@/utils';
 import type { DeckListItem } from '@/types/deck';
 import type { MainTabScreenProps } from '@/types/navigation';
 
 function DeckCard({ deck, onPress }: { deck: DeckListItem; onPress: () => void }) {
   const hasDue = deck.due_count > 0;
   const progress = deck.card_count > 0
-    ? Math.round((deck.mastered_count / deck.card_count) * 100)
+    ? Math.round((deck.mature_count / deck.card_count) * 100)
     : 0;
 
   return (
@@ -45,7 +46,7 @@ function DeckCard({ deck, onPress }: { deck: DeckListItem; onPress: () => void }
         {deck.last_studied && (
           <>
             <MetaText>·</MetaText>
-            <MetaText>Last studied {deck.last_studied}</MetaText>
+            <MetaText>Last studied {formatRelativeDate(deck.last_studied)}</MetaText>
           </>
         )}
       </View>
@@ -105,7 +106,10 @@ export function DecksScreen({ navigation }: MainTabScreenProps<'Decks'>) {
         data={decks ?? []}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <DeckCard deck={item} onPress={() => {}} />
+          <DeckCard
+            deck={item}
+            onPress={() => navigation.navigate('DeckDetail', { deckId: String(item.id) })}
+          />
         )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}

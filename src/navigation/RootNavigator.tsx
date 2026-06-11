@@ -3,7 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '@/constants/theme';
 import { MainTabNavigator } from './MainTabNavigator';
-import { LoginScreen } from '@/screens';
+import { LoginScreen, DeckDetailScreen, CardCreateScreen, CardEditScreen } from '@/screens';
 import { useAuthStore } from '@/stores/authStore';
 import type { RootStackParamList } from '@/types/navigation';
 
@@ -39,9 +39,23 @@ export function RootNavigator() {
       {isAuthenticated ? (
         <>
           <Stack.Screen name="Main" component={MainTabNavigator} />
+          <Stack.Screen
+            name="DeckDetail"
+            component={DeckDetailScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen
+            name="CardCreate"
+            component={CardCreateScreen}
+            options={{ animation: 'slide_from_bottom' }}
+          />
+          <Stack.Screen
+            name="CardEdit"
+            component={CardEditScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
           {/* TODO: Add other screens */}
           {/* <Stack.Screen name="Study" component={StudyScreen} /> */}
-          {/* <Stack.Screen name="DeckDetail" component={DeckDetailScreen} /> */}
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

@@ -5,8 +5,12 @@ import type {
   CreateDeckInput,
   UpdateDeckInput,
   Card,
+  CardListItem,
+  DueCardsResponse,
   CreateCardInput,
+  UpdateCardInput,
   ReviewCardInput,
+  ReviewResult,
 } from '@/types/deck';
 
 export const deckService = {
@@ -34,13 +38,20 @@ export const deckService = {
   },
 
   // Card operations
-  getCards: async (deckId: number): Promise<Card[]> => {
-    const { data } = await apiClient.get<Card[]>(`/decks/${deckId}/cards`);
+  getCards: async (deckId: number): Promise<CardListItem[]> => {
+    const { data } = await apiClient.get<CardListItem[]>(`/cards/deck/${deckId}`);
     return data;
   },
 
-  getDueCards: async (deckId: number): Promise<Card[]> => {
-    const { data } = await apiClient.get<Card[]>(`/decks/${deckId}/cards/due`);
+  getDueCards: async (deckId: number, limit = 20, studyAhead = false): Promise<DueCardsResponse> => {
+    const { data } = await apiClient.get<DueCardsResponse>(
+      `/cards/deck/${deckId}/due?limit=${limit}&study_ahead=${studyAhead}`
+    );
+    return data;
+  },
+
+  getCard: async (id: number): Promise<Card> => {
+    const { data } = await apiClient.get<Card>(`/cards/${id}`);
     return data;
   },
 
@@ -49,7 +60,7 @@ export const deckService = {
     return data;
   },
 
-  updateCard: async (id: number, input: Partial<CreateCardInput>): Promise<void> => {
+  updateCard: async (id: number, input: UpdateCardInput): Promise<void> => {
     await apiClient.put(`/cards/${id}`, input);
   },
 
@@ -57,7 +68,8 @@ export const deckService = {
     await apiClient.delete(`/cards/${id}`);
   },
 
-  reviewCard: async (input: ReviewCardInput): Promise<void> => {
-    await apiClient.post('/cards/review', input);
+  reviewCard: async ({ card_id, ...body }: ReviewCardInput): Promise<ReviewResult> => {
+    const { data } = await apiClient.post<ReviewResult>(`/cards/${card_id}/review`, body);
+    return data;
   },
 };

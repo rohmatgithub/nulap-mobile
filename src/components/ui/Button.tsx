@@ -28,7 +28,9 @@ const variantStyles: Record<ButtonVariant, { container: ViewStyle; text: TextSty
   },
   secondary: {
     container: {
-      backgroundColor: 'transparent',
+      // Must be opaque: with a transparent background, iOS applies the
+      // box shadow to the rendered content (text ghosting) instead of the box
+      backgroundColor: colors.surface,
       borderWidth: 2,
       borderColor: colors.borderStrong,
     },

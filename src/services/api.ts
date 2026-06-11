@@ -1,5 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { useAuthStore } from '@/stores/authStore';
+import { queryClient } from './queryClient';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8686/api/v1';
 const APP_ID = process.env.EXPO_PUBLIC_APP_ID || 'nulap-app';
@@ -51,8 +53,12 @@ apiClient.interceptors.response.use(
   },
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
-      await SecureStore.deleteItemAsync('access_token');
       await SecureStore.deleteItemAsync('refresh_token');
+      // clearAuth removes access_token + user from SecureStore and flips
+      // isAuthenticated to false, so RootNavigator switches to LoginScreen
+      await useAuthStore.getState().clearAuth();
+      // Drop cached data from the expired session
+      queryClient.clear();
     }
     return Promise.reject(error);
   }

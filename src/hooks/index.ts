@@ -17,11 +17,13 @@ export {
   useDecks,
   useDeck,
   useDeckCards,
+  useCard,
   useDueCards,
   useCreateDeck,
   useUpdateDeck,
   useDeleteDeck,
   useCreateCard,
+  useUpdateCard,
   useDeleteCard,
   DECK_KEYS,
 } from './useDecks';

@@ -1,4 +1,5 @@
 export { apiClient, handleApiError } from './api';
+export { queryClient } from './queryClient';
 export type { ApiError } from './api';
 export { authService } from './auth';
 export { taskService } from './task';
