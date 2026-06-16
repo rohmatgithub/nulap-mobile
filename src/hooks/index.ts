@@ -2,6 +2,7 @@ export {
   useTasks,
   useTask,
   useTodayStats,
+  useTodayTasks,
   useCategories,
   useCreateTask,
   useUpdateTask,
@@ -25,24 +26,29 @@ export {
   useCreateCard,
   useUpdateCard,
   useDeleteCard,
+  useReviewCard,
   DECK_KEYS,
 } from './useDecks';
 
 export {
   useBooks,
   useUserBooks,
+  useAllBooksWithProgress,
   useUserBooksByStatus,
   useBook,
+  useBookChapters,
+  useBookChapter,
   useBookProgress,
   useBookHighlights,
   useBookBookmarks,
   useUpdateBookProgress,
   useUpdateBookStatus,
   useCreateHighlight,
+  useUpdateHighlight,
   useDeleteHighlight,
+  useCreateCardFromHighlight,
   useCreateBookmark,
   useDeleteBookmark,
-  useDeleteBook,
   BOOK_KEYS,
 } from './useBooks';
 
@@ -55,3 +61,6 @@ export {
   useUpdateDailyGoal,
   GAMIFICATION_KEYS,
 } from './useGamification';
+
+export { useActivity, STATS_KEYS } from './useStats';
+export type { ActivityDay } from './useStats';

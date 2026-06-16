@@ -14,6 +14,7 @@ export const TASK_KEYS = {
   all: ['tasks'] as const,
   lists: () => [...TASK_KEYS.all, 'list'] as const,
   list: (filters?: TaskFilters) => [...TASK_KEYS.lists(), filters] as const,
+  today: () => [...TASK_KEYS.lists(), 'today'] as const,
   details: () => [...TASK_KEYS.all, 'detail'] as const,
   detail: (id: string) => [...TASK_KEYS.details(), id] as const,
   stats: () => [...TASK_KEYS.all, 'stats'] as const,
@@ -44,6 +45,18 @@ export function useTodayStats() {
   return useQuery({
     queryKey: TASK_KEYS.todayStats(),
     queryFn: () => taskService.getTodayStats(),
+  });
+}
+
+export function useTodayTasks() {
+  const today = new Date().toISOString().split('T')[0];
+  return useQuery({
+    queryKey: TASK_KEYS.today(),
+    queryFn: () =>
+      taskService.getAll({
+        start_date: today,
+        end_date: today,
+      }),
   });
 }
 

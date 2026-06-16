@@ -3,9 +3,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogOut, Flame, Target, BookOpen, CheckSquare, Zap } from 'lucide-react-native';
 import { colors, spacing, screenPadding } from '@/constants/theme';
 import { Text, DisplayText, MetaText, Card, Button, Badge, ProgressBar } from '@/components/ui';
+import { StudyQueueWidget, TasksTodayWidget, ActivityChartWidget } from '@/components/dashboard';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/auth';
-import { useGamificationOverview, useDecks, useTodayStats } from '@/hooks';
+import { useGamificationOverview, useDecks, useTodayStats, useTodayTasks, useCompleteTask, useUncompleteTask, useActivity } from '@/hooks';
 import type { MainTabScreenProps } from '@/types/navigation';
 
 function StatCard({
@@ -40,14 +41,32 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
   } = useGamificationOverview();
 
   const { data: decks, refetch: refetchDecks } = useDecks();
-  const { data: taskStats, refetch: refetchTasks } = useTodayStats();
+  const { data: taskStats, refetch: refetchTaskStats } = useTodayStats();
+  const { data: todayTasks, refetch: refetchTodayTasks } = useTodayTasks();
+  const { data: activity, refetch: refetchActivity } = useActivity(7);
+  const completeTask = useCompleteTask();
+  const uncompleteTask = useUncompleteTask();
 
   const isRefreshing = gamificationLoading;
 
   const handleRefresh = () => {
     refetchGamification();
     refetchDecks();
-    refetchTasks();
+    refetchTaskStats();
+    refetchTodayTasks();
+    refetchActivity();
+  };
+
+  const handleStudyDeck = (deckId: number) => {
+    navigation.navigate('Study', { deckId: String(deckId) });
+  };
+
+  const handleToggleTask = (taskId: string, shouldComplete: boolean) => {
+    if (shouldComplete) {
+      completeTask.mutate(taskId);
+    } else {
+      uncompleteTask.mutate(taskId);
+    }
   };
 
   const today = new Date().toLocaleDateString('id-ID', {
@@ -74,12 +93,9 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
   };
 
   const totalDueCards = decks?.reduce((sum, deck) => sum + deck.due_count, 0) ?? 0;
-  const levelProgress = gamification
-    ? Math.round(
-        ((gamification.total_xp % gamification.xp_to_next_level) /
-          gamification.xp_to_next_level) *
-          100
-      )
+  const levelProgress = gamification?.user.xp_progress ?? 0;
+  const xpToNextLevel = gamification
+    ? gamification.user.xp_for_next_level - (gamification.user.total_xp - gamification.user.xp_for_current_level)
     : 0;
 
   return (
@@ -121,20 +137,20 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
                   Level
                 </Text>
                 <Text variant="headingBold" size="xl">
-                  {gamification.level}
+                  {gamification.user.level}
                 </Text>
               </View>
               <View style={styles.xpBadge}>
                 <Zap size={14} color={colors.accentTertiary} fill={colors.accentTertiary} />
                 <Text variant="mono" size="sm" style={{ color: colors.accentTertiary }}>
-                  {gamification.total_xp} XP
+                  {gamification.user.total_xp} XP
                 </Text>
               </View>
             </View>
             <View style={styles.progressSection}>
               <ProgressBar progress={levelProgress} color={colors.accentTertiary} />
               <MetaText size="xs" style={styles.progressText}>
-                {gamification.xp_to_next_level - (gamification.total_xp % gamification.xp_to_next_level)} XP to level {gamification.level + 1}
+                {xpToNextLevel} XP to level {gamification.user.level + 1}
               </MetaText>
             </View>
           </Card>
@@ -145,13 +161,13 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
           <StatCard
             icon={Flame}
             label="Streak"
-            value={gamification?.current_streak ?? 0}
+            value={gamification?.streak.current_streak ?? 0}
             color={colors.accentPrimary}
           />
           <StatCard
             icon={Target}
             label="Goal"
-            value={`${gamification?.daily_progress ?? 0}%`}
+            value={`${gamification?.daily_progress.progress_percent ?? 0}%`}
             color={colors.accentSecondary}
           />
           <StatCard
@@ -168,30 +184,53 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
           />
         </View>
 
+        {/* Study Queue */}
+        {decks && (
+          <StudyQueueWidget
+            decks={decks}
+            onStudyDeck={handleStudyDeck}
+            onViewAll={() => navigation.navigate('Decks')}
+          />
+        )}
+
+        {/* Today's Tasks */}
+        {todayTasks && (
+          <TasksTodayWidget
+            tasks={todayTasks}
+            onToggleTask={handleToggleTask}
+            onViewAll={() => navigation.navigate('Todo')}
+          />
+        )}
+
         {/* Daily Progress */}
-        {gamification && gamification.daily_goal > 0 && (
+        {gamification && gamification.user.daily_goal > 0 && (
           <Card style={styles.card}>
             <View style={styles.dailyHeader}>
               <Text variant="headingBold" size="base">Daily Progress</Text>
-              <Badge variant={gamification.daily_progress >= 100 ? 'primary' : 'secondary'}>
-                {gamification.daily_progress >= 100 ? 'Complete!' : `${gamification.daily_progress}%`}
+              <Badge variant={gamification.daily_progress.goal_met ? 'primary' : 'secondary'}>
+                {gamification.daily_progress.goal_met ? 'Complete!' : `${gamification.daily_progress.progress_percent}%`}
               </Badge>
             </View>
             <ProgressBar
-              progress={Math.min(gamification.daily_progress, 100)}
-              color={gamification.daily_progress >= 100 ? colors.accentSecondary : colors.accentPrimary}
+              progress={Math.min(gamification.daily_progress.progress_percent, 100)}
+              color={gamification.daily_progress.goal_met ? colors.accentSecondary : colors.accentPrimary}
             />
             <View style={styles.dailyStats}>
               <View style={styles.dailyStat}>
-                <MetaText>{gamification.cards_reviewed_today}</MetaText>
+                <MetaText>{gamification.daily_progress.cards_reviewed}</MetaText>
                 <MetaText size="xs">cards reviewed</MetaText>
               </View>
               <View style={styles.dailyStat}>
-                <MetaText>{gamification.tasks_completed_today}</MetaText>
-                <MetaText size="xs">tasks done</MetaText>
+                <MetaText>{gamification.daily_progress.xp_earned}</MetaText>
+                <MetaText size="xs">XP earned</MetaText>
               </View>
             </View>
           </Card>
+        )}
+
+        {/* Weekly Activity */}
+        {activity && activity.length > 0 && (
+          <ActivityChartWidget data={activity} />
         )}
 
         {/* Quick Actions */}

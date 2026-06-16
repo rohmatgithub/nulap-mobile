@@ -1,16 +1,18 @@
 import { apiClient } from './api';
 import type {
   Book,
+  Chapter,
   UserBook,
   Highlight,
   Bookmark,
   UpdateProgressInput,
   CreateHighlightInput,
+  UpdateHighlightInput,
   CreateBookmarkInput,
 } from '@/types/book';
 
 export const bookService = {
-  // Book library
+  // Book library (published books)
   getAll: async (): Promise<Book[]> => {
     const { data } = await apiClient.get<Book[]>('/books');
     return data;
@@ -21,8 +23,15 @@ export const bookService = {
     return data;
   },
 
-  delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/books/${id}`);
+  // Chapters (for chapters content type)
+  getChapters: async (bookId: number): Promise<Chapter[]> => {
+    const { data } = await apiClient.get<Chapter[]>(`/books/${bookId}/chapters`);
+    return data;
+  },
+
+  getChapter: async (bookId: number, chapterNumber: number): Promise<Chapter> => {
+    const { data } = await apiClient.get<Chapter>(`/books/${bookId}/chapters/${chapterNumber}`);
+    return data;
   },
 
   // User's books (library with progress)
@@ -55,13 +64,32 @@ export const bookService = {
     return data;
   },
 
-  createHighlight: async (input: CreateHighlightInput): Promise<Highlight> => {
+  createHighlight: async (_bookId: number, input: CreateHighlightInput): Promise<Highlight> => {
     const { data } = await apiClient.post<Highlight>('/books/highlights', input);
     return data;
   },
 
-  deleteHighlight: async (id: number): Promise<void> => {
-    await apiClient.delete(`/books/highlights/${id}`);
+  updateHighlight: async (_bookId: number, highlightId: number, input: UpdateHighlightInput): Promise<Highlight> => {
+    const { data } = await apiClient.put<Highlight>(`/books/highlights/${highlightId}`, input);
+    return data;
+  },
+
+  deleteHighlight: async (_bookId: number, highlightId: number): Promise<void> => {
+    await apiClient.delete(`/books/highlights/${highlightId}`);
+  },
+
+  createCardFromHighlight: async (
+    _bookId: number,
+    highlightId: number,
+    deckId: number,
+    front: string,
+    back: string
+  ): Promise<void> => {
+    await apiClient.post(`/books/highlights/${highlightId}/card`, {
+      deck_id: deckId,
+      front,
+      back,
+    });
   },
 
   // Bookmarks
@@ -70,12 +98,12 @@ export const bookService = {
     return data;
   },
 
-  createBookmark: async (input: CreateBookmarkInput): Promise<Bookmark> => {
-    const { data } = await apiClient.post<Bookmark>('/books/bookmarks', input);
+  createBookmark: async (bookId: number, input: CreateBookmarkInput): Promise<Bookmark> => {
+    const { data } = await apiClient.post<Bookmark>(`/books/${bookId}/bookmarks`, input);
     return data;
   },
 
-  deleteBookmark: async (id: number): Promise<void> => {
-    await apiClient.delete(`/books/bookmarks/${id}`);
+  deleteBookmark: async (bookId: number, bookmarkId: number): Promise<void> => {
+    await apiClient.delete(`/books/${bookId}/bookmarks/${bookmarkId}`);
   },
 };

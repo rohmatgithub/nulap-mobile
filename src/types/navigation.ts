@@ -6,11 +6,20 @@ import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigat
 export type RootStackParamList = {
   Login: undefined;
   Main: NavigatorScreenParams<MainTabParamList>;
-  Study: { deckId: string };
-  StudyDone: { deckId: string; sessionId: string };
+  Study: { deckId: string; studyAhead?: boolean };
+  StudyDone: {
+    deckId: string;
+    ratings: string;
+    xp: string;
+    duration: string;
+    levelUp: string;
+    level: string;
+    goalMet: string;
+  };
   DeckDetail: { deckId: string };
   CardCreate: { deckId?: string };
   CardEdit: { cardId: string };
+  BookDetail: { bookId: string };
   BookReader: { bookId: string };
   Settings: undefined;
 };

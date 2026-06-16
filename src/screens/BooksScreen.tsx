@@ -6,12 +6,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, BookOpen } from 'lucide-react-native';
 import { colors, spacing, screenPadding } from '@/constants/theme';
 import { Text, HeadingText, MetaText, Card, Badge, ProgressBar, Button } from '@/components/ui';
-import { useUserBooks } from '@/hooks';
+import { useAllBooksWithProgress } from '@/hooks';
 import type { UserBook } from '@/types/book';
 import type { MainTabScreenProps } from '@/types/navigation';
 
@@ -32,14 +33,24 @@ function formatLastRead(dateString?: string): string {
 function BookCard({ userBook, onPress }: { userBook: UserBook; onPress: () => void }) {
   const progress = Math.round(userBook.progress);
   const isComplete = userBook.status === 'finished';
-  const totalPages = userBook.total_pages ?? Math.round(userBook.total_locations / 10);
-  const currentPage = userBook.current_page ?? Math.round(userBook.current_location / 10);
+  const readingTimeMinutes = userBook.reading_time_minutes;
+  const chaptersInfo = userBook.content_type === 'chapters' && userBook.total_chapters
+    ? `${userBook.chapters_completed}/${userBook.total_chapters} chapters`
+    : `${readingTimeMinutes} min read`;
 
   return (
     <Card onPress={onPress} style={styles.bookCard}>
       <View style={styles.bookContent}>
         <View style={styles.bookCover}>
-          <BookOpen size={32} color={colors.textSecondary} />
+          {userBook.cover_url ? (
+            <Image
+              source={{ uri: userBook.cover_url }}
+              style={styles.coverImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <BookOpen size={32} color={colors.textSecondary} />
+          )}
         </View>
         <View style={styles.bookInfo}>
           <Text variant="headingBold" size="base" numberOfLines={2} style={styles.bookTitle}>
@@ -47,9 +58,7 @@ function BookCard({ userBook, onPress }: { userBook: UserBook; onPress: () => vo
           </Text>
           <MetaText numberOfLines={1}>{userBook.author}</MetaText>
           <View style={styles.bookMeta}>
-            <MetaText>
-              {currentPage}/{totalPages} pages
-            </MetaText>
+            <MetaText>{chaptersInfo}</MetaText>
             {userBook.last_read_at && (
               <>
                 <MetaText>·</MetaText>
@@ -72,7 +81,7 @@ function BookCard({ userBook, onPress }: { userBook: UserBook; onPress: () => vo
 }
 
 export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
-  const { data: userBooks, isLoading, error, refetch, isRefetching } = useUserBooks();
+  const { data: userBooks, isLoading, error, refetch, isRefetching } = useAllBooksWithProgress();
 
   if (isLoading) {
     return (
@@ -115,7 +124,10 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
         data={userBooks ?? []}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <BookCard userBook={item} onPress={() => {}} />
+          <BookCard
+            userBook={item}
+            onPress={() => navigation.navigate('BookDetail', { bookId: String(item.id) })}
+          />
         )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
@@ -200,6 +212,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  coverImage: {
+    width: '100%',
+    height: '100%',
   },
   bookInfo: {
     flex: 1,

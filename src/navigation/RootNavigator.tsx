@@ -3,7 +3,16 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '@/constants/theme';
 import { MainTabNavigator } from './MainTabNavigator';
-import { LoginScreen, DeckDetailScreen, CardCreateScreen, CardEditScreen } from '@/screens';
+import {
+  LoginScreen,
+  DeckDetailScreen,
+  CardCreateScreen,
+  CardEditScreen,
+  StudyScreen,
+  StudyDoneScreen,
+  BookDetailScreen,
+  BookReaderScreen,
+} from '@/screens';
 import { useAuthStore } from '@/stores/authStore';
 import type { RootStackParamList } from '@/types/navigation';
 
@@ -54,8 +63,26 @@ export function RootNavigator() {
             component={CardEditScreen}
             options={{ animation: 'slide_from_right' }}
           />
-          {/* TODO: Add other screens */}
-          {/* <Stack.Screen name="Study" component={StudyScreen} /> */}
+          <Stack.Screen
+            name="Study"
+            component={StudyScreen}
+            options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name="StudyDone"
+            component={StudyDoneScreen}
+            options={{ animation: 'fade', gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name="BookDetail"
+            component={BookDetailScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen
+            name="BookReader"
+            component={BookReaderScreen}
+            options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

@@ -39,6 +39,7 @@ export const fonts = {
   heading: 'SpaceMono_400Regular',
   headingBold: 'SpaceMono_700Bold',
   body: 'Lora_400Regular',
+  bodyBold: 'Lora_700Bold',
   bodyItalic: 'Lora_400Regular_Italic',
   mono: 'SpaceMono_400Regular',
 } as const;

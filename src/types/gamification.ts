@@ -1,34 +1,40 @@
-export interface GamificationOverview {
-  total_xp: number;
-  level: number;
-  xp_to_next_level: number;
-  current_streak: number;
-  longest_streak: number;
-  cards_reviewed_today: number;
-  tasks_completed_today: number;
-  daily_goal: number;
-  daily_progress: number;
-}
-
 export interface UserGamification {
-  user_id: number;
   total_xp: number;
   level: number;
-  current_streak: number;
-  longest_streak: number;
-  last_activity_date?: string;
+  xp_for_current_level: number;
+  xp_for_next_level: number;
+  xp_progress: number;
   daily_goal: number;
+  streak_freezes_available: number;
+  max_streak_freezes: number;
 }
 
 export interface DailyProgress {
   date: string;
   cards_reviewed: number;
-  cards_correct: number;
-  tasks_completed: number;
-  xp_earned: number;
-  reading_minutes: number;
-  focus_minutes: number;
+  daily_goal: number;
   goal_met: boolean;
+  xp_earned: number;
+  progress_percent: number;
+}
+
+export interface WeeklyXP {
+  current_week_xp: number;
+  previous_week_xp: number;
+  trend_percent: number;
+}
+
+export interface StreakInfo {
+  current_streak: number;
+  freezes_available: number;
+  freeze_used_today: boolean;
+}
+
+export interface GamificationOverview {
+  user: UserGamification;
+  daily_progress: DailyProgress;
+  weekly_xp: WeeklyXP;
+  streak: StreakInfo;
 }
 
 export interface LeaderboardEntry {

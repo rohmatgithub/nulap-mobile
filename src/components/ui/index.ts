@@ -5,3 +5,4 @@ export * from './Badge';
 export * from './ProgressBar';
 export * from './Input';
 export * from './Modal';
+export * from './MarkdownRenderer';

@@ -17,6 +17,7 @@ import {
 import {
   Lora_400Regular,
   Lora_400Regular_Italic,
+  Lora_700Bold,
 } from '@expo-google-fonts/lora';
 import * as SplashScreen from 'expo-splash-screen';
 
@@ -34,6 +35,7 @@ export default function App() {
     SpaceMono_700Bold,
     Lora_400Regular,
     Lora_400Regular_Italic,
+    Lora_700Bold,
   });
 
   const onLayoutRootView = useCallback(async () => {

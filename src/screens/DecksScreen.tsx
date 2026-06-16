@@ -16,7 +16,15 @@ import { formatRelativeDate } from '@/utils';
 import type { DeckListItem } from '@/types/deck';
 import type { MainTabScreenProps } from '@/types/navigation';
 
-function DeckCard({ deck, onPress }: { deck: DeckListItem; onPress: () => void }) {
+function DeckCard({
+  deck,
+  onPress,
+  onStudy,
+}: {
+  deck: DeckListItem;
+  onPress: () => void;
+  onStudy: () => void;
+}) {
   const hasDue = deck.due_count > 0;
   const progress = deck.card_count > 0
     ? Math.round((deck.mature_count / deck.card_count) * 100)
@@ -54,7 +62,7 @@ function DeckCard({ deck, onPress }: { deck: DeckListItem; onPress: () => void }
       <ProgressBar progress={progress} style={styles.deckProgress} />
 
       {hasDue && (
-        <Button variant="primary" onPress={onPress} style={styles.studyButton}>
+        <Button variant="primary" onPress={onStudy} style={styles.studyButton}>
           Study Now
         </Button>
       )}
@@ -109,6 +117,7 @@ export function DecksScreen({ navigation }: MainTabScreenProps<'Decks'>) {
           <DeckCard
             deck={item}
             onPress={() => navigation.navigate('DeckDetail', { deckId: String(item.id) })}
+            onStudy={() => navigation.navigate('Study', { deckId: String(item.id) })}
           />
         )}
         contentContainerStyle={styles.list}

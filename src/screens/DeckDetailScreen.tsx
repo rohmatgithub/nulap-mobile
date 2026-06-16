@@ -253,17 +253,23 @@ export function DeckDetailScreen({ navigation, route }: RootStackScreenProps<'De
               <StatBox value={deck.mature_count} label="Mature" color="success" />
             </View>
 
-            {deck.due_count > 0 && (
+            {deck.due_count > 0 ? (
               <Button
                 variant="primary"
-                onPress={() => {
-                  Alert.alert('Coming Soon', 'Study mode will be available soon.');
-                }}
+                onPress={() => navigation.navigate('Study', { deckId: route.params.deckId })}
                 style={styles.studyButton}
               >
                 {`Study Now (${deck.due_count} due)`}
               </Button>
-            )}
+            ) : deck.card_count > 0 ? (
+              <Button
+                variant="secondary"
+                onPress={() => navigation.navigate('Study', { deckId: route.params.deckId, studyAhead: true })}
+                style={styles.studyButton}
+              >
+                Study Ahead
+              </Button>
+            ) : null}
 
             {/* Deck actions */}
             <View style={styles.deckActions}>

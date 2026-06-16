@@ -44,10 +44,10 @@ export function useCard(id: number) {
   });
 }
 
-export function useDueCards(deckId: number) {
+export function useDueCards(deckId: number, studyAhead = false) {
   return useQuery({
-    queryKey: DECK_KEYS.dueCards(deckId),
-    queryFn: () => deckService.getDueCards(deckId),
+    queryKey: [...DECK_KEYS.dueCards(deckId), studyAhead],
+    queryFn: () => deckService.getDueCards(deckId, 50, studyAhead),
     enabled: !!deckId,
   });
 }
@@ -122,6 +122,24 @@ export function useDeleteCard() {
       deckService.deleteCard(id),
     onSuccess: (_, { deckId }) => {
       queryClient.invalidateQueries({ queryKey: DECK_KEYS.cards(deckId) });
+      queryClient.invalidateQueries({ queryKey: DECK_KEYS.detail(deckId) });
+      queryClient.invalidateQueries({ queryKey: DECK_KEYS.list() });
+    },
+  });
+}
+
+export function useReviewCard() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { cardId: number; deckId: number; rating: import('@/types/deck').ReviewRating; reviewTimeMs?: number }) =>
+      deckService.reviewCard({
+        card_id: input.cardId,
+        rating: input.rating,
+        review_time_ms: input.reviewTimeMs,
+      }),
+    onSuccess: (_, { deckId }) => {
+      queryClient.invalidateQueries({ queryKey: DECK_KEYS.dueCards(deckId) });
       queryClient.invalidateQueries({ queryKey: DECK_KEYS.detail(deckId) });
       queryClient.invalidateQueries({ queryKey: DECK_KEYS.list() });
     },
