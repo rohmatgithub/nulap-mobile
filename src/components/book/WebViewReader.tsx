@@ -64,86 +64,160 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-function markdownToHtml(markdown: string): string {
-  let html = escapeHtml(markdown);
+// Apply highlight to a specific position in text
+function applyHighlightAtOffset(
+  text: string,
+  highlight: Highlight,
+  startOffset: number,
+  endOffset: number
+): string {
+  // Validate offsets
+  if (startOffset < 0 || endOffset > text.length || startOffset >= endOffset) {
+    return text;
+  }
 
-  // Headings
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  const highlightData = JSON.stringify({
+    id: highlight.id,
+    text: highlight.text,
+    color: highlight.color,
+    note: highlight.note,
+    flashcard_id: highlight.flashcard_id,
+  }).replace(/"/g, '&quot;');
 
-  // Bold and italic
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+  const hasNote = !!highlight.note;
+  const borderStyle = hasNote ? 'border-bottom: 2px dotted currentColor;' : '';
 
-  // Code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  const before = text.slice(0, startOffset);
+  const highlightedText = text.slice(startOffset, endOffset);
+  const after = text.slice(endOffset);
 
-  // Blockquotes
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-  // Horizontal rule
-  html = html.replace(/^---$/gm, '<hr>');
-  html = html.replace(/^\*\*\*$/gm, '<hr>');
-
-  // Lists
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-
-  // Wrap consecutive li in ul
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-
-  // Paragraphs - wrap non-tagged lines
-  const lines = html.split('\n');
-  const processed = lines.map(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return '';
-    if (trimmed.startsWith('<h') ||
-        trimmed.startsWith('<blockquote') ||
-        trimmed.startsWith('<ul') ||
-        trimmed.startsWith('<li') ||
-        trimmed.startsWith('<hr') ||
-        trimmed.startsWith('</')) {
-      return line;
-    }
-    return `<p>${trimmed}</p>`;
-  });
-
-  return processed.join('\n');
+  return `${before}<span class="highlight-${highlight.color} highlight-clickable" data-highlight='${highlightData}' style="${borderStyle}" onclick="handleHighlightClick(event, this)">${escapeHtml(highlightedText)}</span>${after}`;
 }
 
-function applyHighlightsToHtml(html: string, highlights: Highlight[]): string {
-  if (!highlights || highlights.length === 0) return html;
+// Group highlights by paragraph index
+function groupHighlightsByParagraph(highlights: Highlight[]): Map<number, Highlight[]> {
+  const grouped = new Map<number, Highlight[]>();
 
-  let result = html;
+  for (const highlight of highlights) {
+    const pIndex = highlight.paragraph_index ?? -1;
+    if (pIndex < 0) continue;
 
-  // Sort highlights by text length (longest first) to avoid partial replacements
-  const sortedHighlights = [...highlights].sort((a, b) => b.text.length - a.text.length);
-
-  for (const highlight of sortedHighlights) {
-    // Escape special regex characters in the highlight text
-    const escapedText = highlight.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Escape the highlight data for HTML attribute
-    const highlightData = JSON.stringify({
-      id: highlight.id,
-      text: highlight.text,
-      color: highlight.color,
-      note: highlight.note,
-      flashcard_id: highlight.flashcard_id,
-    }).replace(/"/g, '&quot;');
-
-    const hasNote = !!highlight.note;
-    const borderStyle = hasNote ? 'border-bottom: 2px dotted currentColor;' : '';
-
-    // Only replace if not already inside a highlight span
-    const regex = new RegExp(`(?<!<span[^>]*>)${escapedText}(?![^<]*<\/span>)`, 'g');
-    result = result.replace(
-      regex,
-      `<span class="highlight-${highlight.color} highlight-clickable" data-highlight='${highlightData}' style="${borderStyle}" onclick="handleHighlightClick(event, this)">${highlight.text}</span>`
-    );
+    const existing = grouped.get(pIndex) || [];
+    existing.push(highlight);
+    grouped.set(pIndex, existing);
   }
+
+  // Sort highlights within each paragraph by start_offset (descending)
+  // so we can apply them from end to start without offset shifting
+  for (const [key, value] of grouped) {
+    value.sort((a, b) => (b.start_offset ?? 0) - (a.start_offset ?? 0));
+    grouped.set(key, value);
+  }
+
+  return grouped;
+}
+
+function markdownToHtmlWithHighlights(markdown: string, highlights: Highlight[]): string {
+  const highlightsByParagraph = groupHighlightsByParagraph(highlights);
+
+  const lines = markdown.split('\n');
+  let paragraphIndex = 0;
+  const processedLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip empty lines
+    if (!trimmed) {
+      processedLines.push('');
+      continue;
+    }
+
+    // Check if this line will become a paragraph-like element
+    const isParagraphLike =
+      trimmed.startsWith('# ') ||
+      trimmed.startsWith('## ') ||
+      trimmed.startsWith('### ') ||
+      trimmed.startsWith('> ') ||
+      trimmed.startsWith('- ') ||
+      /^\d+\. /.test(trimmed) ||
+      (!trimmed.startsWith('---') && !trimmed.startsWith('***'));
+
+    if (!isParagraphLike) {
+      // Non-paragraph elements (hr, etc.) - just escape and pass through
+      processedLines.push(escapeHtml(trimmed));
+      continue;
+    }
+
+    // Get highlights for this paragraph
+    const paragraphHighlights = highlightsByParagraph.get(paragraphIndex) || [];
+
+    // Extract content based on line type
+    let content = trimmed;
+    let prefix = '';
+    let suffix = '';
+
+    if (trimmed.startsWith('### ')) {
+      prefix = '<h3>';
+      suffix = '</h3>';
+      content = trimmed.slice(4);
+    } else if (trimmed.startsWith('## ')) {
+      prefix = '<h2>';
+      suffix = '</h2>';
+      content = trimmed.slice(3);
+    } else if (trimmed.startsWith('# ')) {
+      prefix = '<h1>';
+      suffix = '</h1>';
+      content = trimmed.slice(2);
+    } else if (trimmed.startsWith('> ')) {
+      prefix = '<blockquote>';
+      suffix = '</blockquote>';
+      content = trimmed.slice(2);
+    } else if (trimmed.startsWith('- ')) {
+      prefix = '<li>';
+      suffix = '</li>';
+      content = trimmed.slice(2);
+    } else if (/^\d+\. /.test(trimmed)) {
+      prefix = '<li>';
+      suffix = '</li>';
+      content = trimmed.replace(/^\d+\. /, '');
+    } else {
+      prefix = '<p>';
+      suffix = '</p>';
+    }
+
+    // Apply highlights to content (from end to start to preserve offsets)
+    let processedContent = content;
+    for (const highlight of paragraphHighlights) {
+      const start = highlight.start_offset ?? 0;
+      const end = highlight.end_offset ?? (start + highlight.text.length);
+      processedContent = applyHighlightAtOffset(processedContent, highlight, start, end);
+    }
+
+    // If no highlights were applied, escape the content
+    if (paragraphHighlights.length === 0) {
+      processedContent = escapeHtml(processedContent);
+    }
+
+    // Apply inline markdown formatting to the content
+    processedContent = processedContent
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      .replace(/_(.+?)_/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    processedLines.push(`${prefix}${processedContent}${suffix}`);
+    paragraphIndex++;
+  }
+
+  // Post-process: wrap consecutive li elements in ul
+  let result = processedLines.join('\n');
+  result = result.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+
+  // Handle horizontal rules
+  result = result.replace(/^---$/gm, '<hr>');
+  result = result.replace(/^\*\*\*$/gm, '<hr>');
 
   return result;
 }
@@ -154,10 +228,9 @@ function generateHtml(
   highlights: Highlight[] = []
 ): string {
   const themeColors = getThemeColors(settings.theme);
-  let htmlContent = markdownToHtml(content);
 
-  // Apply highlights to the content
-  htmlContent = applyHighlightsToHtml(htmlContent, highlights);
+  // Use the new function that applies highlights at specific positions
+  const htmlContent = markdownToHtmlWithHighlights(content, highlights);
 
   const highlightStyles = Object.entries(HIGHLIGHT_COLORS)
     .map(([color, bg]) => `.highlight-${color} { background-color: ${bg}; }`)

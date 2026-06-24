@@ -3,18 +3,34 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
+  TextInput,
   ActivityIndicator,
   RefreshControl,
   Alert,
   Image,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, BookOpen } from 'lucide-react-native';
-import { colors, spacing, screenPadding } from '@/constants/theme';
+import { Plus, BookOpen, Search, X } from 'lucide-react-native';
+import { colors, spacing, screenPadding, fonts, fontSize } from '@/constants/theme';
 import { Text, HeadingText, MetaText, Card, Badge, ProgressBar, Button } from '@/components/ui';
-import { useAllBooksWithProgress } from '@/hooks';
+import { useBookCategories, useInfiniteBooksWithProgress } from '@/hooks';
 import type { UserBook } from '@/types/book';
 import type { MainTabScreenProps } from '@/types/navigation';
+import { useEffect, useMemo, useState } from 'react';
+
+const PAGE_SIZE = 15;
+
+function useDebouncedValue<T>(value: T, delay: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 function formatLastRead(dateString?: string): string {
   if (!dateString) return '';
@@ -81,19 +97,42 @@ function BookCard({ userBook, onPress }: { userBook: UserBook; onPress: () => vo
 }
 
 export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
-  const { data: userBooks, isLoading, error, refetch, isRefetching } = useAllBooksWithProgress();
+  const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const filters = useMemo(
+    () => ({
+      search: debouncedSearch || undefined,
+      category: selectedCategory,
+    }),
+    [debouncedSearch, selectedCategory]
+  );
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.accentPrimary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const {
+    data: userBooks,
+    total,
+    isLoading,
+    error,
+    refetch,
+    isRefetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteBooksWithProgress(filters, PAGE_SIZE);
+  const { data: categories } = useBookCategories();
 
-  if (error) {
+  // If we have data, always show it (even during refetch)
+  const hasData = userBooks && userBooks.length > 0;
+  const hasActiveFilters = Boolean(search.trim()) || Boolean(selectedCategory);
+
+  const handleLoadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  // Only show error if there's no data to display
+  if (error && !hasData) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.errorContainer}>
@@ -106,18 +145,87 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
     );
   }
 
+  // Only show loading if we have NO data at all (true initial load)
+  if (!hasData && isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accentPrimary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <HeadingText>My Books</HeadingText>
-          <MetaText>{userBooks?.length ?? 0} books</MetaText>
+          <MetaText>{total ? `${total} books` : 'Search your library'}</MetaText>
         </View>
         <Pressable style={styles.addButton} onPress={() => {
           Alert.alert('Coming Soon', 'Book upload will be available in a future update.');
         }}>
           <Plus size={20} color={colors.textPrimary} strokeWidth={2} />
         </Pressable>
+      </View>
+
+      <View style={styles.filters}>
+        <View style={styles.searchBox}>
+          <Search size={18} color={colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search books..."
+            placeholderTextColor={colors.textMuted}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch('')} hitSlop={8}>
+              <X size={18} color={colors.textSecondary} />
+            </Pressable>
+          )}
+        </View>
+
+        {(categories?.length ?? 0) > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryList}
+          >
+            <Pressable
+              style={[styles.categoryChip, !selectedCategory && styles.categoryChipActive]}
+              onPress={() => setSelectedCategory(undefined)}
+            >
+              <Text
+                variant="mono"
+                size="xs"
+                style={[styles.categoryText, !selectedCategory && styles.categoryTextActive]}
+              >
+                All
+              </Text>
+            </Pressable>
+            {categories?.map((category) => {
+              const isActive = selectedCategory === category;
+              return (
+                <Pressable
+                  key={category}
+                  style={[styles.categoryChip, isActive && styles.categoryChipActive]}
+                  onPress={() => setSelectedCategory(isActive ? undefined : category)}
+                >
+                  <Text
+                    variant="mono"
+                    size="xs"
+                    style={[styles.categoryText, isActive && styles.categoryTextActive]}
+                  >
+                    {category}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
 
       <FlatList
@@ -131,6 +239,8 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
         )}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -138,9 +248,18 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
             tintColor={colors.accentPrimary}
           />
         }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color={colors.accentPrimary} />
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text variant="body" color="secondary">No books yet</Text>
+            <Text variant="body" color="secondary">
+              {hasActiveFilters ? 'No books match your search' : 'No books yet'}
+            </Text>
           </View>
         }
       />
@@ -196,6 +315,52 @@ const styles = StyleSheet.create({
     padding: screenPadding,
     paddingTop: 0,
     gap: spacing[4],
+  },
+  filters: {
+    paddingHorizontal: screenPadding,
+    paddingBottom: spacing[4],
+    gap: spacing[3],
+  },
+  searchBox: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: spacing[4],
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
+    color: colors.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: fontSize.sm,
+  },
+  categoryList: {
+    gap: spacing[2],
+    paddingRight: screenPadding,
+  },
+  categoryChip: {
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[3],
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  categoryChipActive: {
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.accentPrimary,
+  },
+  categoryText: {
+    color: colors.textSecondary,
+  },
+  categoryTextActive: {
+    color: colors.textPrimary,
+  },
+  footerLoader: {
+    paddingVertical: spacing[6],
   },
   bookCard: {
     marginBottom: spacing[1],

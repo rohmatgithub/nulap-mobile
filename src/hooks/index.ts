@@ -32,6 +32,8 @@ export {
 
 export {
   useBooks,
+  useBookCategories,
+  useInfiniteBooksWithProgress,
   useUserBooks,
   useAllBooksWithProgress,
   useUserBooksByStatus,

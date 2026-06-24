@@ -31,6 +31,7 @@ import {
   useDeleteBookmark,
   useDecks,
   useCreateCard,
+  useUpdateCard,
 } from '@/hooks';
 import type { RootStackScreenProps } from '@/types/navigation';
 import type { Chapter, Highlight, HighlightColor, CreateHighlightInput } from '@/types/book';
@@ -548,6 +549,7 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
   const createBookmark = useCreateBookmark();
   const deleteBookmark = useDeleteBookmark();
   const createCard = useCreateCard();
+  const updateCard = useUpdateCard();
 
   const isChapterBased = book?.content_type === 'chapters';
   const currentChapter = useMemo(() => {
@@ -561,6 +563,17 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
     }
     return book?.content || '';
   }, [isChapterBased, currentChapter, book?.content]);
+
+  // Filter highlights by current chapter for chapter-based books
+  const currentHighlights = useMemo(() => {
+    if (!highlights) return [];
+    if (isChapterBased && currentChapter) {
+      // Only show highlights for the current chapter
+      return highlights.filter((h) => h.chapter_id === currentChapter.id);
+    }
+    // For text-based books, show all highlights
+    return highlights;
+  }, [highlights, isChapterBased, currentChapter]);
 
   const isCurrentPageBookmarked = useMemo(() => {
     if (!bookmarks) return false;
@@ -833,20 +846,45 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
     }) => {
       if (!highlightModal.editingHighlight) return;
 
+      // Build note content like we do when creating
+      let noteContent: string | undefined;
+      if (data.note && data.flashcard) {
+        noteContent = `${data.note}\n---\n📚 ${data.flashcard.back}`;
+      } else if (data.flashcard) {
+        noteContent = `📚 ${data.flashcard.back}`;
+      } else if (data.note) {
+        noteContent = data.note;
+      }
+
       try {
         await updateHighlight.mutateAsync({
           bookId,
           highlightId: highlightModal.editingHighlight.id,
-          input: { color: data.color, note: data.note },
+          input: { color: data.color, note: noteContent },
         });
 
-        // Create flashcard if enabled and doesn't exist
-        if (data.flashcard && !highlightModal.editingHighlight.flashcard_id) {
-          await createCard.mutateAsync({
-            deck_id: data.flashcard.deckId,
-            front: data.flashcard.front,
-            back: data.flashcard.back,
-          });
+        // Handle flashcard: update existing or create new
+        if (data.flashcard) {
+          if (highlightModal.editingHighlight.flashcard_id) {
+            // Update existing flashcard
+            await updateCard.mutateAsync({
+              id: highlightModal.editingHighlight.flashcard_id,
+              deckId: data.flashcard.deckId,
+              input: {
+                front: data.flashcard.front,
+                back: data.flashcard.back,
+              },
+            });
+          } else {
+            // Create new flashcard and link to highlight
+            await bookService.createCardFromHighlight(
+              bookId,
+              highlightModal.editingHighlight.id,
+              data.flashcard.deckId,
+              data.flashcard.front,
+              data.flashcard.back
+            );
+          }
         }
 
         refetchHighlights();
@@ -855,7 +893,7 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
         Alert.alert('Error', 'Failed to update highlight');
       }
     },
-    [bookId, highlightModal.editingHighlight, updateHighlight, createCard, refetchHighlights]
+    [bookId, highlightModal.editingHighlight, updateHighlight, updateCard, refetchHighlights]
   );
 
   const handleDeleteHighlightFromModal = useCallback(async () => {
@@ -899,7 +937,9 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
     }
   }, [settings.theme]);
 
-  if (bookLoading || !book) {
+  // Only show loading on initial load (when there's no cached data)
+  // This prevents showing loading spinner when returning to reader
+  if (!book) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.loadingContainer}>
@@ -938,7 +978,7 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
           <WebViewReader
             content={content}
             settings={settings}
-            highlights={highlights}
+            highlights={currentHighlights}
             onTextSelected={handleTextSelected}
             onOpenMoreOptions={handleOpenMoreOptions}
             onHighlightClick={handleHighlightClick}

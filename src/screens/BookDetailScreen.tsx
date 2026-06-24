@@ -96,10 +96,14 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
   const bookId = Number(route.params.bookId);
   const [showMenu, setShowMenu] = useState(false);
 
-  const { data: book, isLoading, error, refetch, isRefetching } = useBookProgress(bookId);
+  const { data: book, isLoading: isBookLoading, error, refetch, isRefetching } = useBookProgress(bookId);
   const { data: highlights } = useBookHighlights(bookId);
   const updateStatus = useUpdateBookStatus();
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Only show loading on initial load (when there's no cached data)
+  // This prevents showing loading spinner when returning from reader
+  const isLoading = isBookLoading && !book;
 
   const handleStatusChange = (status: BookStatus) => {
     setShowMenu(false);

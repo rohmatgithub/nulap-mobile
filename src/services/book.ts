@@ -3,6 +3,8 @@ import type {
   Book,
   Chapter,
   UserBook,
+  BookFilters,
+  PaginatedUserBooksResponse,
   Highlight,
   Bookmark,
   UpdateProgressInput,
@@ -15,6 +17,23 @@ export const bookService = {
   // Book library (published books)
   getAll: async (): Promise<Book[]> => {
     const { data } = await apiClient.get<Book[]>('/books');
+    return data;
+  },
+
+  getCategories: async (): Promise<string[]> => {
+    const { data } = await apiClient.get<string[]>('/books/categories');
+    return data;
+  },
+
+  getPaged: async (params: BookFilters & { page: number; limit: number }): Promise<PaginatedUserBooksResponse> => {
+    const { data } = await apiClient.get<PaginatedUserBooksResponse>('/books', {
+      params: {
+        page: params.page,
+        limit: params.limit,
+        search: params.search || undefined,
+        category: params.category || undefined,
+      },
+    });
     return data;
   },
 

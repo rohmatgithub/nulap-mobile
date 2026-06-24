@@ -54,6 +54,23 @@ export interface UserBook {
 
 export type BookStatus = 'reading' | 'finished' | 'dropped';
 
+export interface BookFilters {
+  search?: string;
+  category?: string;
+}
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface PaginatedUserBooksResponse {
+  items: UserBook[];
+  meta: PaginationMeta;
+}
+
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'red';
 
 export interface Highlight {

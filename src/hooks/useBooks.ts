@@ -1,12 +1,14 @@
-import { useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useRef } from 'react';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bookService } from '@/services/book';
-import type { UserBook, UpdateProgressInput, CreateHighlightInput, UpdateHighlightInput, CreateBookmarkInput } from '@/types/book';
+import type { BookFilters, UserBook, UpdateProgressInput, CreateHighlightInput, UpdateHighlightInput, CreateBookmarkInput } from '@/types/book';
 
 export const BOOK_KEYS = {
   all: ['books'] as const,
   lists: () => [...BOOK_KEYS.all, 'list'] as const,
   list: () => [...BOOK_KEYS.lists()] as const,
+  pagedList: (filters: BookFilters, limit: number) => [...BOOK_KEYS.lists(), 'paged', filters, limit] as const,
+  categories: () => [...BOOK_KEYS.all, 'categories'] as const,
   userBooks: () => [...BOOK_KEYS.all, 'user'] as const,
   userBooksByStatus: (status: string) => [...BOOK_KEYS.userBooks(), status] as const,
   details: () => [...BOOK_KEYS.all, 'detail'] as const,
@@ -25,6 +27,46 @@ export function useBooks() {
   });
 }
 
+export function useBookCategories() {
+  return useQuery({
+    queryKey: BOOK_KEYS.categories(),
+    queryFn: () => bookService.getCategories(),
+    staleTime: 1000 * 60 * 30,
+  });
+}
+
+export function useInfiniteBooksWithProgress(filters: BookFilters = {}, limit = 15) {
+  const query = useInfiniteQuery({
+    queryKey: BOOK_KEYS.pagedList(filters, limit),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => bookService.getPaged({
+      ...filters,
+      page: pageParam,
+      limit,
+    }),
+    getNextPageParam: (lastPage) => {
+      if (lastPage.meta.page >= lastPage.meta.total_pages) {
+        return undefined;
+      }
+      return lastPage.meta.page + 1;
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const books = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data]
+  );
+
+  const total = query.data?.pages[0]?.meta.total ?? 0;
+
+  return {
+    ...query,
+    data: books,
+    total,
+  };
+}
+
 export function useUserBooks() {
   return useQuery({
     queryKey: BOOK_KEYS.userBooks(),
@@ -33,23 +75,33 @@ export function useUserBooks() {
 }
 
 export function useAllBooksWithProgress() {
+  // Keep track of last known good data to prevent flash of loading
+  const lastDataRef = useRef<UserBook[]>([]);
+
   const booksQuery = useQuery({
     queryKey: BOOK_KEYS.list(),
     queryFn: () => bookService.getAll(),
+    staleTime: 1000 * 60 * 5, // 5 minutes - prevent refetch on screen focus
   });
 
   const userBooksQuery = useQuery({
     queryKey: BOOK_KEYS.userBooks(),
     queryFn: () => bookService.getUserBooks(),
+    staleTime: 1000 * 60 * 5, // 5 minutes - prevent refetch on screen focus
   });
 
   const mergedBooks = useMemo(() => {
     const allBooks = booksQuery.data || [];
     const userProgress = userBooksQuery.data || [];
 
+    // If no data yet, return last known good data
+    if (allBooks.length === 0 && lastDataRef.current.length > 0) {
+      return lastDataRef.current;
+    }
+
     const progressMap = new Map(userProgress.map((p) => [p.id, p]));
 
-    return allBooks.map((book): UserBook => {
+    const result = allBooks.map((book): UserBook => {
       const progress = progressMap.get(book.id);
       if (progress) {
         return progress;
@@ -66,11 +118,22 @@ export function useAllBooksWithProgress() {
         reading_time: 0,
       };
     });
+
+    // Store as last known good data
+    if (result.length > 0) {
+      lastDataRef.current = result;
+    }
+
+    return result;
   }, [booksQuery.data, userBooksQuery.data]);
+
+  // Only show loading if we've NEVER had data
+  const hasEverHadData = lastDataRef.current.length > 0 || mergedBooks.length > 0;
+  const isInitialLoading = (booksQuery.isLoading || userBooksQuery.isLoading) && !hasEverHadData;
 
   return {
     data: mergedBooks,
-    isLoading: booksQuery.isLoading || userBooksQuery.isLoading,
+    isLoading: isInitialLoading,
     error: booksQuery.error || userBooksQuery.error,
     refetch: () => {
       booksQuery.refetch();
@@ -101,6 +164,7 @@ export function useBookChapters(bookId: number) {
     queryKey: BOOK_KEYS.chapters(bookId),
     queryFn: () => bookService.getChapters(bookId),
     enabled: !!bookId,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -117,6 +181,7 @@ export function useBookProgress(bookId: number) {
     queryKey: BOOK_KEYS.progress(bookId),
     queryFn: () => bookService.getProgress(bookId),
     enabled: !!bookId,
+    staleTime: 1000 * 60 * 5, // 5 minutes - prevent refetch on screen focus
   });
 }
 
@@ -143,8 +208,9 @@ export function useUpdateBookProgress() {
     mutationFn: ({ bookId, input }: { bookId: number; input: UpdateProgressInput }) =>
       bookService.updateProgress(bookId, input),
     onSuccess: (_, { bookId }) => {
+      // Only invalidate the specific book's progress, not the entire user books list
+      // The library list will refresh via staleTime when user returns to it
       queryClient.invalidateQueries({ queryKey: BOOK_KEYS.progress(bookId) });
-      queryClient.invalidateQueries({ queryKey: BOOK_KEYS.userBooks() });
     },
   });
 }
