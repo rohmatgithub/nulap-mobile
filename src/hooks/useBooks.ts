@@ -182,6 +182,7 @@ export function useBookProgress(bookId: number) {
     queryFn: () => bookService.getProgress(bookId),
     enabled: !!bookId,
     staleTime: 1000 * 60 * 5, // 5 minutes - prevent refetch on screen focus
+    placeholderData: (previousData) => previousData, // Keep previous data during refetch
   });
 }
 

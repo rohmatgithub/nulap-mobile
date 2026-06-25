@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -27,7 +27,7 @@ import { Text, HeadingText, MetaText, Card, Button, Badge, ProgressBar } from '@
 import { useBookProgress, useBookHighlights, useUpdateBookStatus } from '@/hooks';
 import { bookService } from '@/services/book';
 import type { RootStackScreenProps } from '@/types/navigation';
-import type { BookStatus, Highlight } from '@/types/book';
+import type { BookStatus, Highlight, UserBook } from '@/types/book';
 
 const HIGHLIGHT_COLORS: Record<string, string> = {
   yellow: 'rgba(196, 169, 81, 0.4)',
@@ -95,15 +95,33 @@ function HighlightCard({ highlight }: { highlight: Highlight }) {
 export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'BookDetail'>) {
   const bookId = Number(route.params.bookId);
   const [showMenu, setShowMenu] = useState(false);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const lastBookRef = useRef<UserBook | null>(null);
 
-  const { data: book, isLoading: isBookLoading, error, refetch, isRefetching } = useBookProgress(bookId);
+  const { data: book, isLoading: isBookLoading, error, refetch } = useBookProgress(bookId);
   const { data: highlights } = useBookHighlights(bookId);
   const updateStatus = useUpdateBookStatus();
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Only show loading on initial load (when there's no cached data)
-  // This prevents showing loading spinner when returning from reader
-  const isLoading = isBookLoading && !book;
+  // Keep track of last known book data to prevent loading flash
+  if (book) {
+    lastBookRef.current = book;
+  }
+
+  // Use last known data if current data is undefined (during refetch)
+  const displayBook = book ?? lastBookRef.current;
+
+  // Only show loading on true initial load (never had data)
+  const isLoading = isBookLoading && !displayBook;
+
+  const handleRefresh = useCallback(async () => {
+    setIsManualRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [refetch]);
 
   const handleStatusChange = (status: BookStatus) => {
     setShowMenu(false);
@@ -151,7 +169,7 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
     );
   }
 
-  if (error || !book) {
+  if (error || !displayBook) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.errorContainer}>
@@ -170,11 +188,11 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
     );
   }
 
-  const progress = Math.round(book.progress);
-  const isChapterBased = book.content_type === 'chapters';
-  const progressInfo = isChapterBased && book.total_chapters
-    ? `${book.chapters_completed}/${book.total_chapters} chapters`
-    : `${book.reading_time_minutes} min read`;
+  const progress = Math.round(displayBook.progress);
+  const isChapterBased = displayBook.content_type === 'chapters';
+  const progressInfo = isChapterBased && displayBook.total_chapters
+    ? `${displayBook.chapters_completed}/${displayBook.total_chapters} chapters`
+    : `${displayBook.reading_time_minutes} min read`;
 
   const getStatusBadge = (status: BookStatus) => {
     switch (status) {
@@ -187,7 +205,7 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
     }
   };
 
-  const statusBadge = getStatusBadge(book.status);
+  const statusBadge = getStatusBadge(displayBook.status);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -206,19 +224,19 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
             <>
               <Pressable style={styles.menuOverlay} onPress={() => setShowMenu(false)} />
               <View style={styles.menuDropdown}>
-                {book.status !== 'finished' && (
+                {displayBook.status !== 'finished' && (
                   <Pressable style={styles.menuItem} onPress={() => handleStatusChange('finished')}>
                     <Check size={16} color={colors.success} strokeWidth={2} />
                     <Text variant="body" size="sm">Mark as Finished</Text>
                   </Pressable>
                 )}
-                {book.status !== 'dropped' && (
+                {displayBook.status !== 'dropped' && (
                   <Pressable style={styles.menuItem} onPress={() => handleStatusChange('dropped')}>
                     <X size={16} color={colors.textMuted} strokeWidth={2} />
                     <Text variant="body" size="sm">Drop Book</Text>
                   </Pressable>
                 )}
-                {book.status !== 'reading' && (
+                {displayBook.status !== 'reading' && (
                   <Pressable style={styles.menuItem} onPress={() => handleStatusChange('reading')}>
                     <BookOpen size={16} color={colors.accentPrimary} strokeWidth={2} />
                     <Text variant="body" size="sm">Resume Reading</Text>
@@ -242,8 +260,8 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={isManualRefreshing}
+            onRefresh={handleRefresh}
             tintColor={colors.accentPrimary}
           />
         }
@@ -252,9 +270,9 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
         <View style={styles.bookHeader}>
           <View style={styles.coverContainer}>
             <View style={styles.cover}>
-              {book.cover_url ? (
+              {displayBook.cover_url ? (
                 <Image
-                  source={{ uri: book.cover_url }}
+                  source={{ uri: displayBook.cover_url }}
                   style={styles.coverImage}
                   resizeMode="cover"
                 />
@@ -265,14 +283,14 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
           </View>
 
           <View style={styles.bookInfo}>
-            <HeadingText numberOfLines={3}>{book.title}</HeadingText>
+            <HeadingText numberOfLines={3}>{displayBook.title}</HeadingText>
             <Text variant="body" color="secondary" style={styles.author}>
-              {book.author}
+              {displayBook.author}
             </Text>
 
             <View style={styles.badges}>
               <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-              {book.category && <Badge variant="default">{book.category}</Badge>}
+              {displayBook.category && <Badge variant="default">{displayBook.category}</Badge>}
             </View>
           </View>
         </View>
@@ -303,7 +321,7 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
           <StatBox
             icon={Clock}
             label="Time Spent"
-            value={formatReadingTime(book.reading_time)}
+            value={formatReadingTime(displayBook.reading_time)}
           />
           <StatBox
             icon={Highlighter}
@@ -313,12 +331,12 @@ export function BookDetailScreen({ navigation, route }: RootStackScreenProps<'Bo
           <StatBox
             icon={Calendar}
             label="Started"
-            value={formatDate(book.started_at)}
+            value={formatDate(displayBook.started_at)}
           />
           <StatBox
             icon={BookOpen}
             label={isChapterBased ? 'Chapters' : 'Est. Time'}
-            value={isChapterBased ? (book.total_chapters ?? 0) : `${book.reading_time_minutes}m`}
+            value={isChapterBased ? (displayBook.total_chapters ?? 0) : `${displayBook.reading_time_minutes}m`}
           />
         </View>
 

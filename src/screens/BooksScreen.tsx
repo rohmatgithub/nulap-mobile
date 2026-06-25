@@ -8,16 +8,16 @@ import {
   RefreshControl,
   Alert,
   Image,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, BookOpen, Search, X } from 'lucide-react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Plus, BookOpen, Search, X, SlidersHorizontal, Check } from 'lucide-react-native';
 import { colors, spacing, screenPadding, fonts, fontSize } from '@/constants/theme';
-import { Text, HeadingText, MetaText, Card, Badge, ProgressBar, Button } from '@/components/ui';
+import { Text, HeadingText, MetaText, Card, Badge, ProgressBar, Button, BottomSheet } from '@/components/ui';
 import { useBookCategories, useInfiniteBooksWithProgress } from '@/hooks';
 import type { UserBook } from '@/types/book';
 import type { MainTabScreenProps } from '@/types/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const PAGE_SIZE = 15;
 
@@ -99,6 +99,8 @@ function BookCard({ userBook, onPress }: { userBook: UserBook; onPress: () => vo
 export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
   const filters = useMemo(
     () => ({
@@ -114,7 +116,6 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
     isLoading,
     error,
     refetch,
-    isRefetching,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -130,6 +131,21 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
       fetchNextPage();
     }
   };
+
+  const handleRefresh = useCallback(async () => {
+    setIsManualRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [refetch]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   // Only show error if there's no data to display
   if (error && !hasData) {
@@ -171,60 +187,42 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
       </View>
 
       <View style={styles.filters}>
-        <View style={styles.searchBox}>
-          <Search size={18} color={colors.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search books..."
-            placeholderTextColor={colors.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch('')} hitSlop={8}>
-              <X size={18} color={colors.textSecondary} />
-            </Pressable>
-          )}
-        </View>
-
-        {(categories?.length ?? 0) > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryList}
+        <View style={styles.searchRow}>
+          <View style={styles.searchBox}>
+            <Search size={18} color={colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search books..."
+              placeholderTextColor={colors.textMuted}
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                <X size={18} color={colors.textSecondary} />
+              </Pressable>
+            )}
+          </View>
+          <Pressable
+            style={[styles.filterButton, selectedCategory && styles.filterButtonActive]}
+            onPress={() => setShowFilterSheet(true)}
           >
-            <Pressable
-              style={[styles.categoryChip, !selectedCategory && styles.categoryChipActive]}
-              onPress={() => setSelectedCategory(undefined)}
-            >
-              <Text
-                variant="mono"
-                size="xs"
-                style={[styles.categoryText, !selectedCategory && styles.categoryTextActive]}
-              >
-                All
-              </Text>
+            <SlidersHorizontal
+              size={20}
+              color={selectedCategory ? colors.textPrimary : colors.textSecondary}
+              strokeWidth={2}
+            />
+            {selectedCategory && <View style={styles.filterDot} />}
+          </Pressable>
+        </View>
+        {selectedCategory && (
+          <View style={styles.activeFilter}>
+            <Badge variant="primary">{selectedCategory}</Badge>
+            <Pressable onPress={() => setSelectedCategory(undefined)} hitSlop={8}>
+              <X size={14} color={colors.textSecondary} />
             </Pressable>
-            {categories?.map((category) => {
-              const isActive = selectedCategory === category;
-              return (
-                <Pressable
-                  key={category}
-                  style={[styles.categoryChip, isActive && styles.categoryChipActive]}
-                  onPress={() => setSelectedCategory(isActive ? undefined : category)}
-                >
-                  <Text
-                    variant="mono"
-                    size="xs"
-                    style={[styles.categoryText, isActive && styles.categoryTextActive]}
-                  >
-                    {category}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          </View>
         )}
       </View>
 
@@ -243,8 +241,8 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
         onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={isManualRefreshing}
+            onRefresh={handleRefresh}
             tintColor={colors.accentPrimary}
           />
         }
@@ -263,6 +261,57 @@ export function BooksScreen({ navigation }: MainTabScreenProps<'Books'>) {
           </View>
         }
       />
+
+      <BottomSheet
+        visible={showFilterSheet}
+        onClose={() => setShowFilterSheet(false)}
+        title="Filter by Category"
+      >
+        <View style={styles.categoryOptions}>
+          <Pressable
+            style={[styles.categoryOption, !selectedCategory && styles.categoryOptionActive]}
+            onPress={() => {
+              setSelectedCategory(undefined);
+              setShowFilterSheet(false);
+            }}
+          >
+            <Text
+              variant="body"
+              size="base"
+              color={!selectedCategory ? 'primary' : 'secondary'}
+            >
+              All Categories
+            </Text>
+            {!selectedCategory && (
+              <Check size={20} color={colors.accentPrimary} strokeWidth={2} />
+            )}
+          </Pressable>
+          {categories?.map((category) => {
+            const isActive = selectedCategory === category;
+            return (
+              <Pressable
+                key={category}
+                style={[styles.categoryOption, isActive && styles.categoryOptionActive]}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  setShowFilterSheet(false);
+                }}
+              >
+                <Text
+                  variant="body"
+                  size="base"
+                  color={isActive ? 'primary' : 'secondary'}
+                >
+                  {category}
+                </Text>
+                {isActive && (
+                  <Check size={20} color={colors.accentPrimary} strokeWidth={2} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -321,7 +370,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[4],
     gap: spacing[3],
   },
+  searchRow: {
+    flexDirection: 'row',
+    gap: spacing[3],
+  },
   searchBox: {
+    flex: 1,
     height: 48,
     flexDirection: 'row',
     alignItems: 'center',
@@ -338,26 +392,48 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: fontSize.sm,
   },
-  categoryList: {
-    gap: spacing[2],
-    paddingRight: screenPadding,
-  },
-  categoryChip: {
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[3],
+  filterButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
     borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    position: 'relative',
   },
-  categoryChipActive: {
-    borderColor: colors.borderStrong,
+  filterButtonActive: {
+    borderColor: colors.accentPrimary,
+    backgroundColor: colors.accentPrimaryAlpha,
+  },
+  filterDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.accentPrimary,
   },
-  categoryText: {
-    color: colors.textSecondary,
+  activeFilter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
   },
-  categoryTextActive: {
-    color: colors.textPrimary,
+  categoryOptions: {
+    gap: spacing[1],
+  },
+  categoryOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  categoryOptionActive: {
+    backgroundColor: colors.accentPrimaryAlpha,
   },
   footerLoader: {
     paddingVertical: spacing[6],

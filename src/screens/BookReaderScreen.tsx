@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, List, MessageSquare, CreditCard, Check } from 'lucide-react-native';
 import { Picker } from '@react-native-picker/picker';
 import { colors, spacing, fonts } from '@/constants/theme';
@@ -32,9 +33,10 @@ import {
   useDecks,
   useCreateCard,
   useUpdateCard,
+  BOOK_KEYS,
 } from '@/hooks';
 import type { RootStackScreenProps } from '@/types/navigation';
-import type { Chapter, Highlight, HighlightColor, CreateHighlightInput } from '@/types/book';
+import type { Chapter, Highlight, HighlightColor, CreateHighlightInput, UpdateProgressInput } from '@/types/book';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -511,6 +513,9 @@ function HighlightModal({
 export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'BookReader'>) {
   const bookId = Number(route.params.bookId);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestProgressInputRef = useRef<UpdateProgressInput | null>(null);
+  const hasLoadedInitialProgressRef = useRef(false);
+  const queryClient = useQueryClient();
 
   const [settings, setSettings] = useState<ReaderSettingsData>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
@@ -518,6 +523,7 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
   const [showHighlights, setShowHighlights] = useState(false);
   const [currentChapterNumber, setCurrentChapterNumber] = useState(1);
   const [scrollPosition, setScrollPosition] = useState(0);
+  const [restoreScrollPosition, setRestoreScrollPosition] = useState<number | undefined>();
   const [progress, setProgress] = useState(0);
   const [noteModal, setNoteModal] = useState<NoteModalState>({ visible: false });
   const [highlightModal, setHighlightModal] = useState<{
@@ -586,18 +592,24 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
 
   // Load initial state from book progress
   useEffect(() => {
-    if (book) {
+    if (book && !hasLoadedInitialProgressRef.current) {
+      hasLoadedInitialProgressRef.current = true;
+
       if (book.current_chapter_number && book.current_chapter_number !== currentChapterNumber) {
         setCurrentChapterNumber(book.current_chapter_number);
       }
-      setProgress(book.progress || 0);
-    }
-  }, [book]);
 
-  // Reset scroll position when chapter changes
-  useEffect(() => {
-    setScrollPosition(0);
-  }, [currentChapterNumber]);
+      const savedScrollPosition = book.scroll_position || 0;
+      setScrollPosition(savedScrollPosition);
+      setRestoreScrollPosition(savedScrollPosition);
+      setProgress(book.progress || 0);
+      latestProgressInputRef.current = {
+        current_chapter_number: book.current_chapter_number || currentChapterNumber,
+        scroll_position: savedScrollPosition,
+        progress: book.progress || 0,
+      };
+    }
+  }, [book, currentChapterNumber]);
 
   const saveProgress = useCallback(
     (newProgress: number, newScrollPosition: number, chapterNum?: number) => {
@@ -605,25 +617,54 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
         clearTimeout(saveTimeoutRef.current);
       }
 
+      const input: UpdateProgressInput = {
+        current_chapter_number: chapterNum || currentChapterNumber,
+        scroll_position: newScrollPosition,
+        progress: newProgress,
+      };
+      latestProgressInputRef.current = input;
+
       saveTimeoutRef.current = setTimeout(() => {
-        updateProgress.mutate({
-          bookId,
-          input: {
-            current_chapter_number: chapterNum || currentChapterNumber,
-            scroll_position: newScrollPosition,
-            progress: newProgress,
-          },
-        });
+        saveTimeoutRef.current = null;
+        updateProgress.mutate({ bookId, input });
       }, 1000);
     },
     [bookId, currentChapterNumber, updateProgress]
   );
+
+  const refreshBookLists = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: BOOK_KEYS.lists() });
+    queryClient.invalidateQueries({ queryKey: BOOK_KEYS.userBooks() });
+  }, [queryClient]);
+
+  const handleBack = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+
+      const input = latestProgressInputRef.current;
+      if (input) {
+        updateProgress.mutate(
+          { bookId, input },
+          { onSettled: refreshBookLists }
+        );
+      } else {
+        refreshBookLists();
+      }
+    } else {
+      refreshBookLists();
+    }
+
+    navigation.goBack();
+  }, [bookId, navigation, refreshBookLists, updateProgress]);
 
   const goToChapter = useCallback(
     (num: number) => {
       if (!chapters) return;
       if (num >= 1 && num <= chapters.length) {
         setCurrentChapterNumber(num);
+        setScrollPosition(0);
+        setRestoreScrollPosition(0);
         setShowChapters(false);
         saveProgress(progress, 0, num);
       }
@@ -739,6 +780,7 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
   const handleWebViewScroll = useCallback(
     (scrollY: number, contentHeight: number, viewHeight: number) => {
       setScrollPosition(scrollY);
+      setRestoreScrollPosition(scrollY);
       const maxScroll = contentHeight - viewHeight;
 
       let newProgress: number;
@@ -960,7 +1002,7 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
           author={book.author}
           progress={progress}
           highlightsCount={highlights?.length || 0}
-          onBack={() => navigation.goBack()}
+          onBack={handleBack}
           onSettings={() => setShowSettings(true)}
           onBookmark={handleBookmark}
           onHighlights={() => setShowHighlights(true)}
@@ -983,6 +1025,7 @@ export function BookReaderScreen({ navigation, route }: RootStackScreenProps<'Bo
             onOpenMoreOptions={handleOpenMoreOptions}
             onHighlightClick={handleHighlightClick}
             onScroll={handleWebViewScroll}
+            initialScrollPosition={restoreScrollPosition ?? book.scroll_position ?? 0}
           />
         </View>
 

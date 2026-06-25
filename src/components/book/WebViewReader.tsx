@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { colors, fonts } from '@/constants/theme';
@@ -20,6 +20,7 @@ interface WebViewReaderProps {
   onHighlightClick?: (highlight: Highlight, position: { x: number; y: number }) => void;
   onScroll?: (scrollY: number, contentHeight: number, viewHeight: number) => void;
   onContentReady?: () => void;
+  initialScrollPosition?: number;
 }
 
 const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
@@ -605,13 +606,43 @@ export function WebViewReader({
   onHighlightClick,
   onScroll,
   onContentReady,
+  initialScrollPosition = 0,
 }: WebViewReaderProps) {
   const webViewRef = useRef<WebView>(null);
+  const webViewReadyRef = useRef(false);
+  const hasRestoredScrollRef = useRef(false);
 
   const html = useMemo(
     () => generateHtml(content, settings, highlights),
     [content, settings, highlights]
   );
+
+  const restoreScrollPosition = useCallback(() => {
+    const y = Math.max(0, Math.round(initialScrollPosition));
+    if (!webViewReadyRef.current || hasRestoredScrollRef.current || y <= 0) {
+      return;
+    }
+
+    hasRestoredScrollRef.current = true;
+    webViewRef.current?.injectJavaScript(`
+      requestAnimationFrame(function() {
+        window.scrollTo(0, ${y});
+        setTimeout(function() {
+          window.scrollTo(0, ${y});
+        }, 100);
+      });
+      true;
+    `);
+  }, [initialScrollPosition]);
+
+  useEffect(() => {
+    webViewReadyRef.current = false;
+    hasRestoredScrollRef.current = false;
+  }, [html]);
+
+  useEffect(() => {
+    restoreScrollPosition();
+  }, [restoreScrollPosition]);
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -632,6 +663,8 @@ export function WebViewReader({
             onScroll?.(data.scrollY, data.contentHeight, data.viewHeight);
             break;
           case 'ready':
+            webViewReadyRef.current = true;
+            restoreScrollPosition();
             onContentReady?.();
             break;
         }
@@ -639,7 +672,7 @@ export function WebViewReader({
         console.error('WebView message error:', error);
       }
     },
-    [onTextSelected, onOpenMoreOptions, onHighlightClick, onScroll, onContentReady]
+    [onTextSelected, onOpenMoreOptions, onHighlightClick, onScroll, onContentReady, restoreScrollPosition]
   );
 
   return (
