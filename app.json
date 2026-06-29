@@ -2,6 +2,7 @@
   "expo": {
     "name": "nulap-mobile",
     "slug": "nulap-mobile",
+    "scheme": "nulap",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -23,7 +24,8 @@
     },
     "plugins": [
       "expo-splash-screen",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ]
   }
 }

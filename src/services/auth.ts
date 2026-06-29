@@ -52,6 +52,23 @@ export const authService = {
     };
   },
 
+  loginWithGoogle: async (idToken: string): Promise<{ accessToken: string; refreshToken: string }> => {
+    const response = await axios.post<LoginResponse>(
+      `${API_BASE_URL}/auth/google`,
+      { idToken },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Id': APP_ID,
+        },
+      }
+    );
+    return {
+      accessToken: response.data.data.accessToken,
+      refreshToken: response.data.data.refreshToken,
+    };
+  },
+
   getMe: async (accessToken: string): Promise<{
     id: number;
     email: string;

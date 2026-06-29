@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,19 +10,31 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff, Globe } from 'lucide-react-native';
 import { colors, spacing, fonts, fontSize, screenPadding } from '@/constants/theme';
-import { Text, DisplayText, Button } from '@/components/ui';
+import { Text, DisplayText } from '@/components/ui';
 import { authService } from '@/services/auth';
 import { useAuthStore } from '@/stores/authStore';
+import {
+  getIdTokenFromGoogleResponse,
+  isGoogleSignInConfigured,
+  useGoogleIdTokenAuthRequest,
+} from '@/services/googleAuth';
 
 export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const setAuth = useAuthStore((state) => state.setAuth);
+  const [googleRequest, googleResponse, promptGoogleSignIn] = useGoogleIdTokenAuthRequest();
+
+  const completeLogin = useCallback(async (accessToken: string, refreshToken: string) => {
+    const user = await authService.getMe(accessToken);
+    await setAuth(user, accessToken, refreshToken);
+  }, [setAuth]);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -33,8 +45,7 @@ export function LoginScreen() {
     setIsLoading(true);
     try {
       const { accessToken, refreshToken } = await authService.login(email.trim(), password);
-      const user = await authService.getMe(accessToken);
-      await setAuth(user, accessToken, refreshToken);
+      await completeLogin(accessToken, refreshToken);
     } catch (error: any) {
       console.error('Login error:', error);
       const message =
@@ -46,6 +57,78 @@ export function LoginScreen() {
       setIsLoading(false);
     }
   };
+
+  const handleGoogleLogin = async () => {
+    if (!isGoogleSignInConfigured) {
+      Alert.alert(
+        'Google Sign-In Not Configured',
+        'Set EXPO_PUBLIC_GOOGLE_CLIENT_ID in the mobile environment first.'
+      );
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    try {
+      const result = await promptGoogleSignIn();
+
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        return;
+      }
+
+      if (result.type !== 'success') {
+        Alert.alert('Google Sign-In Failed', 'Google did not complete the sign-in flow.');
+        return;
+      }
+
+      if (!getIdTokenFromGoogleResponse(result)) {
+        Alert.alert('Google Sign-In Failed', 'Google did not return an ID token.');
+      }
+    } catch (error) {
+      console.error('Google sign-in prompt error:', error);
+      Alert.alert('Google Sign-In Failed', 'Unable to open Google sign-in.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const idToken = getIdTokenFromGoogleResponse(googleResponse);
+    if (!idToken) return;
+
+    let cancelled = false;
+    const googleIdToken = idToken;
+
+    async function signInWithGoogleToken() {
+      setIsGoogleLoading(true);
+      try {
+        const { accessToken, refreshToken } = await authService.loginWithGoogle(googleIdToken);
+        if (!cancelled) {
+          await completeLogin(accessToken, refreshToken);
+        }
+      } catch (error: any) {
+        console.error('Google login error:', error);
+        const message =
+          error.response?.data?.status?.message ||
+          error.response?.data?.message ||
+          'Google sign-in failed. Please try again.';
+        if (!cancelled) {
+          Alert.alert('Google Sign-In Failed', message);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsGoogleLoading(false);
+        }
+      }
+    }
+
+    void signInWithGoogleToken();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [completeLogin, googleResponse]);
+
+  const authBusy = isLoading || isGoogleLoading;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -76,7 +159,7 @@ export function LoginScreen() {
               autoComplete="email"
               autoCapitalize="none"
               autoCorrect={false}
-              editable={!isLoading}
+              editable={!authBusy}
             />
           </View>
 
@@ -94,7 +177,7 @@ export function LoginScreen() {
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
-                editable={!isLoading}
+                editable={!authBusy}
               />
               <Pressable
                 style={styles.eyeButton}
@@ -112,7 +195,7 @@ export function LoginScreen() {
           <Pressable
             style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
             onPress={handleLogin}
-            disabled={isLoading}
+            disabled={authBusy}
           >
             {isLoading ? (
               <ActivityIndicator color={colors.textPrimary} />
@@ -120,6 +203,34 @@ export function LoginScreen() {
               <Text variant="mono" size="base" style={styles.loginButtonText}>
                 Login
               </Text>
+            )}
+          </Pressable>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text variant="mono" size="xs" color="secondary" uppercase>
+              Or
+            </Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <Pressable
+            style={[
+              styles.googleButton,
+              (!googleRequest || authBusy || !isGoogleSignInConfigured) && styles.loginButtonDisabled,
+            ]}
+            onPress={handleGoogleLogin}
+            disabled={!googleRequest || authBusy || !isGoogleSignInConfigured}
+          >
+            {isGoogleLoading ? (
+              <ActivityIndicator color={colors.textPrimary} />
+            ) : (
+              <>
+                <Globe size={20} color={colors.textPrimary} />
+                <Text variant="mono" size="base" style={styles.googleButtonText}>
+                  Continue with Google
+                </Text>
+              </>
             )}
           </Pressable>
         </View>
@@ -209,6 +320,36 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   loginButtonText: {
+    color: colors.textPrimary,
+    fontWeight: '700',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+    marginTop: spacing[2],
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  googleButton: {
+    height: 52,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing[3],
+    shadowColor: colors.borderStrong,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  googleButtonText: {
     color: colors.textPrimary,
     fontWeight: '700',
   },

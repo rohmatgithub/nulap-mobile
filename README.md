@@ -45,6 +45,7 @@ npm run web      # start Expo web target
 ```env
 EXPO_PUBLIC_API_URL=http://localhost:8686/api/v1
 EXPO_PUBLIC_APP_ID=nulap-app
+EXPO_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 ```
 
 When running on a physical device or emulator, `localhost` may point to the device itself instead of your computer. Use a reachable LAN IP or emulator-specific host if needed.
@@ -77,6 +78,24 @@ Authorization: Bearer <access_token>
 ```
 
 Access tokens are stored with Expo SecureStore. If backend returns `401`, the API interceptor clears auth tokens and cached query data.
+
+## Google Sign-In
+
+Mobile Google sign-in uses Expo AuthSession to request a Google ID token, then sends it to the backend `POST /auth/google`. The backend returns NULAP access and refresh tokens, which are stored in Expo SecureStore like password login.
+
+Required setup:
+
+```env
+EXPO_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+This client ID must match the backend `auth.google.clientId`, because the backend validates the Google ID token audience. If separate Android/iOS Google OAuth client IDs are used, update the backend to accept those audiences too.
+
+The app config defines the OAuth redirect scheme:
+
+```text
+nulap://oauthredirect
+```
 
 ## Project Structure
 

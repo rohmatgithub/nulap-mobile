@@ -389,6 +389,11 @@ function generateHtml(
       height: 18px;
     }
 
+    .action-btn.loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
     .text-preview {
       margin-top: 4px;
       max-width: 200px;
@@ -400,6 +405,109 @@ function generateHtml(
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .dictionary-panel {
+      display: none;
+      width: min(300px, calc(100vw - 24px));
+      margin-top: 8px;
+      background: ${colors.surface};
+      border: 2px solid ${colors.borderStrong};
+      box-shadow: 4px 4px 0px ${colors.borderStrong};
+      color: ${colors.textPrimary};
+    }
+
+    .dictionary-panel.visible {
+      display: block;
+    }
+
+    .dictionary-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 2px solid ${colors.border};
+    }
+
+    .dictionary-label {
+      margin: 0 0 4px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: ${colors.textSecondary};
+    }
+
+    .dictionary-word-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .dictionary-word {
+      margin: 0;
+      font-family: 'Space Mono', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dictionary-pos {
+      flex-shrink: 0;
+      padding: 2px 6px;
+      border: 1px solid ${colors.border};
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: ${colors.textSecondary};
+    }
+
+    .dictionary-close {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      background: transparent;
+      border: none;
+      color: ${colors.textSecondary};
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .dictionary-body {
+      padding: 10px 12px 12px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .dictionary-body.loading,
+    .dictionary-body.error {
+      color: ${colors.textSecondary};
+    }
+
+    .dictionary-body.error {
+      color: ${colors.danger};
+    }
+
+    .dictionary-example {
+      margin: 10px 0 0;
+      padding-left: 10px;
+      border-left: 2px solid ${colors.accentPrimary};
+      color: ${colors.textSecondary};
+      font-style: italic;
+    }
+
+    .dictionary-phonetic {
+      margin: 4px 0 0;
+      font-size: 11px;
+      color: ${colors.textSecondary};
     }
   </style>
 </head>
@@ -413,6 +521,12 @@ function generateHtml(
       <div class="color-btn" style="background: #5A8FA8; border-color: #4A7F98;" onclick="selectColor('blue')"></div>
       <div class="color-btn" style="background: #B84A4A; border-color: #A83A3A;" onclick="selectColor('red')"></div>
       <div class="divider"></div>
+      <button id="dictionary-btn" class="action-btn" onclick="lookupDictionary()" title="Dictionary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"></path>
+        </svg>
+      </button>
       <button class="action-btn" onclick="openMore()" title="More options">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="1"></circle>
@@ -428,6 +542,20 @@ function generateHtml(
       </button>
     </div>
     <div id="text-preview" class="text-preview"></div>
+    <div id="dictionary-panel" class="dictionary-panel">
+      <div class="dictionary-header">
+        <div>
+          <p class="dictionary-label">Dictionary</p>
+          <div class="dictionary-word-row">
+            <h3 id="dictionary-word" class="dictionary-word"></h3>
+            <span id="dictionary-pos" class="dictionary-pos"></span>
+          </div>
+          <p id="dictionary-phonetic" class="dictionary-phonetic"></p>
+        </div>
+        <button class="dictionary-close" onclick="closeDictionary()" title="Close dictionary">x</button>
+      </div>
+      <div id="dictionary-body" class="dictionary-body"></div>
+    </div>
   </div>
 
   <script>
@@ -494,6 +622,7 @@ function generateHtml(
       const preview = document.getElementById('text-preview');
 
       if (text.length > 0) {
+        closeDictionary();
         const range = selection.getRangeAt(0);
         const paragraphEl = findParagraphElement(range.startContainer);
 
@@ -532,6 +661,7 @@ function generateHtml(
       document.getElementById('highlight-popup').classList.remove('visible');
       selectedText = '';
       paragraphIndex = -1;
+      closeDictionary();
     }
 
     function openMore() {
@@ -562,6 +692,80 @@ function generateHtml(
         document.getElementById('highlight-popup').classList.remove('visible');
         selectedText = '';
         paragraphIndex = -1;
+      }
+    }
+
+    function getLookupWord(text) {
+      return text.trim().replace(/^[^a-zA-Z]+|[^a-zA-Z-]+$/g, '');
+    }
+
+    function escapeText(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function closeDictionary() {
+      const panel = document.getElementById('dictionary-panel');
+      panel.classList.remove('visible');
+    }
+
+    async function lookupDictionary() {
+      const word = getLookupWord(selectedText);
+      const panel = document.getElementById('dictionary-panel');
+      const body = document.getElementById('dictionary-body');
+      const wordEl = document.getElementById('dictionary-word');
+      const posEl = document.getElementById('dictionary-pos');
+      const phoneticEl = document.getElementById('dictionary-phonetic');
+      const button = document.getElementById('dictionary-btn');
+
+      if (!word) return;
+
+      panel.classList.add('visible');
+      button.classList.add('loading');
+      wordEl.textContent = word;
+      posEl.textContent = '';
+      phoneticEl.textContent = '';
+      body.className = 'dictionary-body loading';
+      body.textContent = 'Looking up definition...';
+
+      try {
+        const response = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word.toLowerCase()));
+
+        if (response.status === 404) {
+          throw new Error('Word not found.');
+        }
+
+        if (!response.ok) {
+          throw new Error('Dictionary is unavailable right now.');
+        }
+
+        const entries = await response.json();
+        const entry = entries && entries[0];
+        const meaning = entry && entry.meanings && entry.meanings[0];
+        const definition = meaning && meaning.definitions && meaning.definitions[0];
+
+        if (!entry || !meaning || !definition || !definition.definition) {
+          throw new Error('No definition available.');
+        }
+
+        wordEl.textContent = entry.word || word;
+        posEl.textContent = meaning.partOfSpeech || '';
+        phoneticEl.textContent = entry.phonetic || '';
+        body.className = 'dictionary-body';
+        body.innerHTML =
+          '<div>' + escapeText(definition.definition) + '</div>' +
+          (definition.example
+            ? '<p class="dictionary-example">"' + escapeText(definition.example) + '"</p>'
+            : '');
+      } catch (error) {
+        body.className = 'dictionary-body error';
+        body.textContent = error && error.message ? error.message : 'Failed to look up this word.';
+      } finally {
+        button.classList.remove('loading');
       }
     }
 
