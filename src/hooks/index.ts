@@ -33,6 +33,7 @@ export {
 export {
   useBooks,
   useBookCategories,
+  usePopularBooks,
   useInfiniteBooksWithProgress,
   useUserBooks,
   useAllBooksWithProgress,

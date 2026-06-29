@@ -40,7 +40,9 @@ export interface GamificationOverview {
 export interface LeaderboardEntry {
   rank: number;
   user_id: number;
-  username: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
   total_xp: number;
   level: number;
   current_streak: number;

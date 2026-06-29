@@ -8,6 +8,7 @@ export const BOOK_KEYS = {
   lists: () => [...BOOK_KEYS.all, 'list'] as const,
   list: () => [...BOOK_KEYS.lists()] as const,
   pagedList: (filters: BookFilters, limit: number) => [...BOOK_KEYS.lists(), 'paged', filters, limit] as const,
+  popular: (limit: number) => [...BOOK_KEYS.all, 'popular', limit] as const,
   categories: () => [...BOOK_KEYS.all, 'categories'] as const,
   userBooks: () => [...BOOK_KEYS.all, 'user'] as const,
   userBooksByStatus: (status: string) => [...BOOK_KEYS.userBooks(), status] as const,
@@ -32,6 +33,14 @@ export function useBookCategories() {
     queryKey: BOOK_KEYS.categories(),
     queryFn: () => bookService.getCategories(),
     staleTime: 1000 * 60 * 30,
+  });
+}
+
+export function usePopularBooks(limit = 5) {
+  return useQuery({
+    queryKey: BOOK_KEYS.popular(limit),
+    queryFn: () => bookService.getPopular(limit),
+    staleTime: 1000 * 60 * 5,
   });
 }
 

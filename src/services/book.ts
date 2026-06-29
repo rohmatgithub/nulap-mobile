@@ -5,6 +5,7 @@ import type {
   UserBook,
   BookFilters,
   PaginatedUserBooksResponse,
+  PopularBook,
   Highlight,
   Bookmark,
   UpdateProgressInput,
@@ -22,6 +23,13 @@ export const bookService = {
 
   getCategories: async (): Promise<string[]> => {
     const { data } = await apiClient.get<string[]>('/books/categories');
+    return data;
+  },
+
+  getPopular: async (limit = 5): Promise<PopularBook[]> => {
+    const { data } = await apiClient.get<PopularBook[]>('/books/popular', {
+      params: { limit },
+    });
     return data;
   },
 

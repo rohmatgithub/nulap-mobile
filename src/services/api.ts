@@ -15,6 +15,65 @@ export const apiClient = axios.create({
   },
 });
 
+interface RetryRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
+
+interface RefreshTokenResponse {
+  status: {
+    code: string;
+    message: string;
+    detail?: unknown;
+  };
+  data?: {
+    accessToken: string;
+  };
+}
+
+let refreshPromise: Promise<string | null> | null = null;
+
+async function clearExpiredSession() {
+  await useAuthStore.getState().clearAuth();
+  queryClient.clear();
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = await SecureStore.getItemAsync('refresh_token');
+  if (!refreshToken) {
+    return null;
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post<RefreshTokenResponse>(
+        `${API_BASE_URL}/auth/refresh`,
+        { refreshToken },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-App-Id': APP_ID,
+          },
+        }
+      )
+      .then(async (response) => {
+        const accessToken = response.data.data?.accessToken;
+        if (!accessToken || response.data.status?.code !== 'OK') {
+          return null;
+        }
+
+        await SecureStore.setItemAsync('access_token', accessToken);
+        useAuthStore.setState({ accessToken, isAuthenticated: true });
+        return accessToken;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const token = await SecureStore.getItemAsync('access_token');
@@ -52,13 +111,20 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      await SecureStore.deleteItemAsync('refresh_token');
-      // clearAuth removes access_token + user from SecureStore and flips
-      // isAuthenticated to false, so RootNavigator switches to LoginScreen
-      await useAuthStore.getState().clearAuth();
-      // Drop cached data from the expired session
-      queryClient.clear();
+    const originalRequest = error.config as RetryRequestConfig | undefined;
+
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      const accessToken = await refreshAccessToken();
+      if (accessToken) {
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        return apiClient(originalRequest);
+      }
+
+      await clearExpiredSession();
+    } else if (error.response?.status === 401) {
+      await clearExpiredSession();
     }
     return Promise.reject(error);
   }

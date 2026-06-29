@@ -17,7 +17,7 @@ import { authService } from '@/services/auth';
 import { useAuthStore } from '@/stores/authStore';
 
 export function LoginScreen() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,16 +25,16 @@ export function LoginScreen() {
   const setAuth = useAuthStore((state) => state.setAuth);
 
   const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter username and password');
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter email and password');
       return;
     }
 
     setIsLoading(true);
     try {
-      const { accessToken } = await authService.login(username.trim(), password);
+      const { accessToken, refreshToken } = await authService.login(email.trim(), password);
       const user = await authService.getMe(accessToken);
-      await setAuth(user, accessToken);
+      await setAuth(user, accessToken, refreshToken);
     } catch (error: any) {
       console.error('Login error:', error);
       const message =
@@ -63,14 +63,17 @@ export function LoginScreen() {
         <View style={styles.form}>
           <View style={styles.inputGroup}>
             <Text variant="mono" size="xs" color="secondary" uppercase style={styles.label}>
-              Username
+              Email
             </Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your username"
+              placeholder="Enter your email"
               placeholderTextColor={colors.textMuted}
-              value={username}
-              onChangeText={setUsername}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              autoComplete="email"
               autoCapitalize="none"
               autoCorrect={false}
               editable={!isLoading}

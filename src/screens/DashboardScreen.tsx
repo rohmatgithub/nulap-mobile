@@ -3,10 +3,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LogOut, Flame, Target, BookOpen, CheckSquare, Zap } from 'lucide-react-native';
 import { colors, spacing, screenPadding } from '@/constants/theme';
 import { Text, DisplayText, MetaText, Card, Button, Badge, ProgressBar } from '@/components/ui';
-import { StudyQueueWidget, TasksTodayWidget, ActivityChartWidget } from '@/components/dashboard';
+import { StudyQueueWidget, TasksTodayWidget, ActivityChartWidget, DictionaryWidget, SuggestedBooksWidget } from '@/components/dashboard';
 import { useAuthStore } from '@/stores/authStore';
 import { authService } from '@/services/auth';
-import { useGamificationOverview, useDecks, useTodayStats, useTodayTasks, useCompleteTask, useUncompleteTask, useActivity } from '@/hooks';
+import {
+  useAllBooksWithProgress,
+  useGamificationOverview,
+  useDecks,
+  usePopularBooks,
+  useTodayStats,
+  useTodayTasks,
+  useCompleteTask,
+  useUncompleteTask,
+  useActivity,
+} from '@/hooks';
 import type { MainTabScreenProps } from '@/types/navigation';
 
 function StatCard({
@@ -33,6 +43,7 @@ function StatCard({
 
 export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>) {
   const { user, accessToken, clearAuth } = useAuthStore();
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email;
 
   const {
     data: gamification,
@@ -44,6 +55,8 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
   const { data: taskStats, refetch: refetchTaskStats } = useTodayStats();
   const { data: todayTasks, refetch: refetchTodayTasks } = useTodayTasks();
   const { data: activity, refetch: refetchActivity } = useActivity(7);
+  const { data: booksWithProgress, refetch: refetchBooks } = useAllBooksWithProgress();
+  const { data: popularBooks, refetch: refetchPopularBooks } = usePopularBooks(5);
   const completeTask = useCompleteTask();
   const uncompleteTask = useUncompleteTask();
 
@@ -55,10 +68,20 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
     refetchTaskStats();
     refetchTodayTasks();
     refetchActivity();
+    refetchBooks();
+    refetchPopularBooks();
   };
 
   const handleStudyDeck = (deckId: number) => {
     navigation.navigate('Study', { deckId: String(deckId) });
+  };
+
+  const handleOpenBook = (bookId: number) => {
+    navigation.navigate('BookDetail', { bookId: String(bookId) });
+  };
+
+  const handleReadBook = (bookId: number) => {
+    navigation.navigate('BookReader', { bookId: String(bookId) });
   };
 
   const handleToggleTask = (taskId: string, shouldComplete: boolean) => {
@@ -93,6 +116,10 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
   };
 
   const totalDueCards = decks?.reduce((sum, deck) => sum + deck.due_count, 0) ?? 0;
+  const userReadBooks = (booksWithProgress ?? []).filter((book) => book.progress > 0 || book.reading_time > 0);
+  const lastReadBook = [...userReadBooks].sort(
+    (a, b) => new Date(b.last_read_at).getTime() - new Date(a.last_read_at).getTime()
+  )[0];
   const levelProgress = gamification?.user.xp_progress ?? 0;
   const xpToNextLevel = gamification
     ? gamification.user.xp_for_next_level - (gamification.user.total_xp - gamification.user.xp_for_current_level)
@@ -117,9 +144,9 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
           <View style={styles.headerContent}>
             <DisplayText>Hari Ini</DisplayText>
             <MetaText>{today}</MetaText>
-            {user && (
+            {displayName && (
               <MetaText style={styles.welcomeText}>
-                Welcome, {user.username}
+                Welcome, {displayName}
               </MetaText>
             )}
           </View>
@@ -127,6 +154,17 @@ export function DashboardScreen({ navigation }: MainTabScreenProps<'Dashboard'>)
             <LogOut size={20} color={colors.textSecondary} />
           </Pressable>
         </View>
+
+        {/* English Dictionary */}
+        <DictionaryWidget />
+
+        <SuggestedBooksWidget
+          lastReadBook={lastReadBook}
+          popularBooks={popularBooks ?? []}
+          onOpenBook={handleOpenBook}
+          onReadBook={handleReadBook}
+          onViewLibrary={() => navigation.navigate('Books')}
+        />
 
         {/* Level & XP Card */}
         {gamification && (

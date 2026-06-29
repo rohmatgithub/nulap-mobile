@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8686/api/v1';
 const APP_ID = process.env.EXPO_PUBLIC_APP_ID || 'nulap-app';
@@ -11,6 +12,7 @@ interface LoginResponse {
   };
   data: {
     accessToken: string;
+    refreshToken: string;
   };
 }
 
@@ -21,18 +23,22 @@ interface MeResponse {
     message: string;
   };
   data: {
-    id: number;
-    username: string;
+    user_id: number;
     email: string;
-    role_code?: string;
+    first_name: string;
+    last_name: string;
+    photo: string;
+    role?: {
+      code?: string;
+    };
   };
 }
 
 export const authService = {
-  login: async (username: string, password: string): Promise<{ accessToken: string }> => {
+  login: async (email: string, password: string): Promise<{ accessToken: string; refreshToken: string }> => {
     const response = await axios.post<LoginResponse>(
       `${API_BASE_URL}/auth/login`,
-      { username, password },
+      { email, password },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -40,13 +46,18 @@ export const authService = {
         },
       }
     );
-    return { accessToken: response.data.data.accessToken };
+    return {
+      accessToken: response.data.data.accessToken,
+      refreshToken: response.data.data.refreshToken,
+    };
   },
 
   getMe: async (accessToken: string): Promise<{
     id: number;
-    username: string;
     email: string;
+    firstName: string;
+    lastName: string;
+    photo: string;
     role?: string;
   }> => {
     const response = await axios.get<MeResponse>(`${API_BASE_URL}/auth/me`, {
@@ -56,18 +67,21 @@ export const authService = {
       },
     });
     return {
-      id: response.data.data.id,
-      username: response.data.data.username,
+      id: response.data.data.user_id,
       email: response.data.data.email,
-      role: response.data.data.role_code,
+      firstName: response.data.data.first_name || '',
+      lastName: response.data.data.last_name || '',
+      photo: response.data.data.photo || '',
+      role: response.data.data.role?.code,
     };
   },
 
   logout: async (accessToken: string): Promise<void> => {
     try {
+      const refreshToken = await SecureStore.getItemAsync('refresh_token');
       await axios.post(
         `${API_BASE_URL}/auth/logout`,
-        {},
+        { refreshToken },
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,

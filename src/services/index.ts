@@ -7,3 +7,5 @@ export { categoryService } from './category';
 export { deckService } from './deck';
 export { bookService } from './book';
 export { gamificationService } from './gamification';
+export { dictionaryService } from './dictionary';
+export type { DictionaryEntry, DictionaryMeaning } from './dictionary';

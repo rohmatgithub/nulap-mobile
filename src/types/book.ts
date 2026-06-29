@@ -71,6 +71,13 @@ export interface PaginatedUserBooksResponse {
   meta: PaginationMeta;
 }
 
+export interface PopularBook {
+  book: Book;
+  reader_count: number;
+  average_progress: number;
+  last_read_at?: string;
+}
+
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'red';
 
 export interface Highlight {
